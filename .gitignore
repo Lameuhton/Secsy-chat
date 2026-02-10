@@ -1,0 +1,10 @@
+# Dossier d'environnement virtuel
+.venv/
+venv/
+
+# Fichiers temporaires de Python
+__pycache__/
+*.py[cod]
+
+# Variables d'environnement
+.env
