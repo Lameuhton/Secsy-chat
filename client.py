@@ -12,25 +12,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage]):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[TuiMessage]):
     """
-    Fonction exécutée dans un thread pour traiter les messages envoyés depuis l'interface.
+    Traite les messages sortants et les renvoie vers l'interface pour affichage.
     """
 
-    logger.info("Thread de traitement des messages sortants démarre")
+    logger.info("Thread de traitement des messages sortants demarre")
 
     while not q_outbound.is_shutdown:
         try:
             # Récupération d'un message avec timeout de 0.5 seconde
             message = q_outbound.get(timeout=0.5)
             # Traitement du message (affichage dans les logs pour l'instant)
-            logger.info(f"Message envoyé: {message}")
+            logger.info(f"Message envoye: {message.message}")
 
             # Ici on ajoutera notre logique de traitement :
             # - Envoi vers un serveur
             # - Traitement cryptographique
             # - Sauvegarde dans une base de données
             # etc
+
+            # Envoi du message traité vers la queue inbound pour affichage dans l'interface
+            q_inbound.put(message)
 
             # Marquage du message comme traité
             q_outbound.task_done()
@@ -40,7 +43,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage]):
         except Exception as e:
             logger.error(f"Erreur lors du traitement d'un message sortant: {e}")
 
-    logger.info("Thread de traitement des messages sortants s'arrête")
+    logger.info("Thread de traitement des messages sortants s'arrete")
 
 def main():
     logger.info("Demarrage de l'application")
@@ -61,7 +64,7 @@ def main():
 
     # Initialisation de l'interface (TUI)
     try:
-        tui = SecsyChatTui(q_inbound, q_outbound, version="0.1.0")
+        tui = SecsyChatTui(q_inbound, q_outbound, version="0.1.0") 
         logger.info("Interface TUI initialisee")
     except Exception as e:
         logger.error(f"Erreur de l'initialisation de la TUI: {e}")
@@ -75,15 +78,15 @@ def main():
 
         outbound_thread = Thread(
             target=handle_outbound_messages,
-            args=(q_outbound,),
+            args=(q_outbound, q_inbound),
             daemon=True,
         )
         outbound_thread.start()
         
-        logger.info("Thread de traitement des messages sortants lancé")
+        logger.info("Thread de traitement des messages sortants lance")
 
     except Exception as e:
-        logger.error(f"Thread d'envoi non correctement implémenté: {e}")
+        logger.error(f"Thread d'envoi non correctement implemente: {e}")
 
     # Exécution de l'interface de chat (TUI)
     tui.run()
