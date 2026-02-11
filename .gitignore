@@ -8,3 +8,6 @@ __pycache__/
 
 # Variables d'environnement
 .env
+
+# Journal (de bord)
+app.log
