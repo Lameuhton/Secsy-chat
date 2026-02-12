@@ -22,9 +22,9 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
     while not q_outbound.is_shutdown:
         try:
             # Récupération d'un message avec timeout de 0.5 seconde
-            message = q_outbound.get(timeout=0.5)
+            msg = q_outbound.get(timeout=0.5)
             # Traitement du message (affichage dans les logs pour l'instant)
-            logger.info(f"Message envoye: {message.message}")
+            logger.info(f"Message envoye: {msg.message}")
 
             # Ici on ajoutera notre logique de traitement :
             # - Envoi vers un serveur
@@ -33,7 +33,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             # etc
 
             # Envoi du message traité vers la queue inbound pour affichage dans l'interface
-            q_inbound.put(message)
+            q_inbound.put(msg)
 
             # Marquage du message comme traité
             q_outbound.task_done()
