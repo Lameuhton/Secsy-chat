@@ -105,7 +105,7 @@ def main():
     if outbound_thread.is_alive():
         outbound_thread.join(timeout=5.0)
         logger.debug("Thread outbound termine")
-
+    #test
 
 if __name__ == "__main__":
     main()
