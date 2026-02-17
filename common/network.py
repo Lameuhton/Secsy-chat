@@ -1,4 +1,5 @@
 import socket
+import time
 
 
 def start_tcp_server(ip: str, port: int) -> socket.socket:
@@ -8,7 +9,13 @@ def start_tcp_server(ip: str, port: int) -> socket.socket:
     :param port le port sur lequel écouter
     :return le socket "server" créé
     """
-
+    # Crée un objet sock qui a comme config de base IPV4 (AF_INET) et TCP (SOCK_STREAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # On attache le socket à une adresse IP et un port précis sur la machine ("écoute sur cette interface, sur ce port")
+    sock.bind((ip, port))
+    # Passe le socket en mode écoute. Prêt à recevoir des connexions entrantes, mais il ne les accepte pas encore
+    sock.listen()
+    return sock
 
 def connect_tcp_server(ip: str, port: int, retry=60) -> socket.socket:
     """
@@ -19,6 +26,16 @@ def connect_tcp_server(ip: str, port: int, retry=60) -> socket.socket:
     :param retry le nombre de seconde à attendre avant de tenter une nouvelle connexion
     :return: le socket "client" créé
     """
+    # While True car il faut que la boucle se répète jusqu'à ce qu'il y ait connexion
+    while True:
+        # Crée à nouveau (pour éviter des interférences) un objet sock qui a comme config de base IPV4 (AF_INET) et TCP (SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect((ip, port))
+            return sock
+        except:
+            sock.close()
+            time.sleep(retry)
 
 
 def send_message(socket: socket.socket, message: bytes):
