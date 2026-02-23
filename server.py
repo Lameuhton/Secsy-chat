@@ -13,7 +13,6 @@ def main():
 
     sock = network.start_tcp_server("127.0.0.1", 4000)
 
-    while True:
 
 
 if __name__ == "__main__":
