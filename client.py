@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[TuiMessage]):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[TuiMessage], sock_client: network.socket.socket):
     """
     Traite les messages sortants et les renvoie vers l'interface pour affichage.
     """
