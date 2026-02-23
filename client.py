@@ -24,7 +24,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             # Récupération d'un message avec timeout de 0.5 seconde
             msg = q_outbound.get(timeout=0.5)
             # Traitement du message (affichage dans les logs pour l'instant)
-            logger_client.info(f"Message envoye: {msg.message}")
+            logger_client.info(f"{msg.sender_name}|{msg.message}")
 
             # Ici on ajoutera notre logique de traitement :
             # - Envoi vers un serveur
@@ -32,11 +32,14 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             # - Sauvegarde dans une base de données
             # etc
 
-            network.send_message_as_str(sock_client, msg.message) # Envoi du message vers le serveur
+            # Envoi du message vers le serveur
+            network.send_message_as_str(sock_client, f"{msg.sender_name}|{msg.message}")
 
+            # Réception de la réponse du serveur (pour affichage dans l'interface)
+            response = network.receive_message_as_str(sock_client)
 
             # Envoi du message traité vers la queue inbound pour affichage dans l'interface
-            q_inbound.put(msg)
+            q_inbound.put(response)
 
             # Marquage du message comme traité
             q_outbound.task_done()
@@ -45,11 +48,17 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             continue
         except Exception as e:
             logger_client.error(f"Erreur lors du traitement d'un message sortant: {e}")
+            
 
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
+
 def main():
     logger_client.info("Demarrage de l'application")
+
+    pseudo = input("Entrez votre pseudo: ")
+    # if not pseudo:
+    #     pseudo = "Anonyme"
 
     # Initialisation de la queue pour les messages reçus à afficher dans l'interface
     try:
@@ -67,7 +76,7 @@ def main():
 
     # Initialisation de l'interface (TUI)
     try:
-        tui = SecsyChatTui(q_inbound, q_outbound, version="0.1.0") 
+        tui = SecsyChatTui(q_inbound, q_outbound, version="0.1.0", user_name=pseudo)
         logger_client.info("Interface TUI initialisee")
     except Exception as e:
         logger_client.error(f"Erreur de l'initialisation de la TUI: {e}")
@@ -79,13 +88,14 @@ def main():
 
     except Exception as e:
         logger_client.error(f"Erreur lors de la connexion au serveur: {e}")
+        return # Arrêt du programme si la connexion au serveur échoue
 
 
     # Création et lancement d'un thread permettant de gérer les messages envoyés
     try:
         # Configuration du thread 
         # - target = fonction à exécuter
-        # - args = arguments à passer à cette fonction sous forme de tuple
+        # - args = arguments à passer à cette fonction
         # - daemon = True -> thread s'arrêtera automatiquement quand le programme principal se termine
         
         outbound_thread = Thread(
