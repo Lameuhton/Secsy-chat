@@ -1,7 +1,7 @@
 import logging
 from queue import Queue, Empty
 from threading import Thread
-
+from common import network
 from secsychat_tui import SecsyChatTui, TuiMessage
 
 # CONFIGURATION DU LOGGER
@@ -31,6 +31,9 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             # - Traitement cryptographique
             # - Sauvegarde dans une base de données
             # etc
+
+            network.send_message_as_str(sock_client, msg.message) # Envoi du message vers le serveur
+
 
             # Envoi du message traité vers la queue inbound pour affichage dans l'interface
             q_inbound.put(msg)
@@ -69,16 +72,26 @@ def main():
     except Exception as e:
         logger_client.error(f"Erreur de l'initialisation de la TUI: {e}")
 
+    # Connexion au serveur
+    try:
+        sock_client = network.connect_tcp_server("127.0.0.1", 4000)
+        logger_client.info("Connexion au serveur")
+
+    except Exception as e:
+        logger_client.error(f"Erreur lors de la connexion au serveur: {e}")
+
+
     # Création et lancement d'un thread permettant de gérer les messages envoyés
     try:
         # Configuration du thread 
         # - target = fonction à exécuter
         # - args = arguments à passer à cette fonction sous forme de tuple
         # - daemon = True -> thread s'arrêtera automatiquement quand le programme principal se termine
-
+        
         outbound_thread = Thread(
             target=handle_outbound_messages,
-            args=(q_outbound, q_inbound),
+            # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants
+            args=(q_outbound, q_inbound, sock_client),
             daemon=True,
         )
         outbound_thread.start()
