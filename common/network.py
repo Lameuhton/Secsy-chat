@@ -44,6 +44,8 @@ def send_message(socket: socket.socket, message: bytes):
     :param socket le socket à utiliser pour envoyer le message
     :param message le message à envoyer en bytes
     """
+    # Les messages sont ici en bytes car socket gèrent les messages en bytes
+    socket.sendall(message)
 
 
 def receive_message(socket: socket.socket) -> bytes:
@@ -52,7 +54,8 @@ def receive_message(socket: socket.socket) -> bytes:
     :param socket le socket à utiliser pour réceptionner le message
     :return le message réceptionné en bytes
     """
-
+    # 2000 est la taille maximale du message à recevoir en bytes (buffer size)
+    return socket.recv(2000)
 
 def send_message_as_str(socket: socket.socket, message: str):
     """
@@ -60,7 +63,8 @@ def send_message_as_str(socket: socket.socket, message: str):
     :param socket le socket à utiliser pour envoyer le message
     :param message le message à envoyer en tant que chaîne de caractères
     """
-
+    # Les messages sont ici en string pour la couche utilisateur
+    send_message(socket,message.encode('utf-8'))
 
 def receive_message_as_str(socket: socket.socket) -> str:
     """
@@ -68,3 +72,4 @@ def receive_message_as_str(socket: socket.socket) -> str:
     :param socket le socket à utiliser pour réceptionner le message
     :return le message réceptionné en tant que chaîne de caractères
     """
+    return receive_message(socket).decode('utf-8')
