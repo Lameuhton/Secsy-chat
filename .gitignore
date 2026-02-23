@@ -10,4 +10,5 @@ __pycache__/
 .env
 
 # Journal (de bord)
-app.log
+app_server.log
+app_client.log
