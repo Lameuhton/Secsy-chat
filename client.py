@@ -1,6 +1,7 @@
 import logging
 from queue import Queue, Empty
 from threading import Thread
+import time
 from common import network
 from secsychat_tui import SecsyChatTui, TuiMessage
 
@@ -39,7 +40,12 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             response = network.receive_message_as_str(sock_client)
 
             # Envoi du message traité vers la queue inbound pour affichage dans l'interface
-            q_inbound.put(response)
+            parts = response.split('|', 1)
+            username, content = parts
+            heure = time.time()
+            # On crée l'objet pour la TUI
+            tui_msg = TuiMessage(sender_name=username, message=content,timestamp=heure)
+            q_inbound.put(tui_msg)
 
             # Marquage du message comme traité
             q_outbound.task_done()
@@ -57,8 +63,8 @@ def main():
     logger_client.info("Demarrage de l'application")
 
     pseudo = input("Entrez votre pseudo: ")
-    # if not pseudo:
-    #     pseudo = "Anonyme"
+    if not pseudo:
+        pseudo = "Anonyme"
 
     # Initialisation de la queue pour les messages reçus à afficher dans l'interface
     try:
