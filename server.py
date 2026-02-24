@@ -22,24 +22,24 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         # Ajout du client dans le dictionnaire des clients connectés (contiendra des sockets)
         clients_connectes[addr] = sock_client # sock_client = connexion faite grâce à addr (ip, port)
         
-        # Connexion avec client
-        while True:
-            message = network.receive_message_as_str(sock_client)
-            if not message: # Client déconnecté
-                break
-            # Renvoie le message au client pour affichage
+    # Connexion avec client
+    while True:
+        message = network.receive_message_as_str(sock_client)
+        if not message: # Client déconnecté
+            break
+        # Renvoie le message au client pour affichage
 
-            # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
-            with clients_lock: 
-                # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client.
-                for client_addr, client_sock in clients_connectes.items(): 
-                    network.send_message_as_str(client_sock, message)
+        # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
+        with clients_lock: 
+            # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client.
+            for client_addr, client_sock in clients_connectes.items(): 
+                network.send_message_as_str(client_sock, message)
 
-            # Déconnexion du client, on sort de la boucle et on ferme le socket
-            with clients_lock:
-                del clients_connectes[addr]
-            sock_client.close()
-            logger_server.info(f"Client {addr} deconnecte, attente d'une nouvelle connexion...")
+    # Déconnexion du client, on sort de la boucle et on ferme le socket
+    with clients_lock:
+        del clients_connectes[addr]
+    sock_client.close()
+    logger_server.info(f"Client {addr} deconnecte, attente d'une nouvelle connexion...")
 
 
 def main():
