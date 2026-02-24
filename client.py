@@ -102,7 +102,7 @@ def main():
         # Configuration du thread 
         # - target = fonction à exécuter
         # - args = arguments à passer à cette fonction
-        # - daemon = True -> thread s'arrêtera automatiquement quand le programme principal se termine
+        # - daemon = True -> type de thread plus "discret", qui s'arrêtera automatiquement quand le programme principal se termine
         
         outbound_thread = Thread(
             target=handle_outbound_messages,
