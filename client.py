@@ -15,7 +15,7 @@ logger_client = logging.getLogger(__name__)
 
 def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket):
     """
-    Traite les messages sortants et les renvoie vers l'interface pour affichage.
+    Traite les messages sortants et les renvoie au serveur.
     """
 
     logger_client.info("Thread de traitement des messages sortants demarre")
@@ -114,7 +114,7 @@ def main():
         return # Arrêt du programme si la connexion au serveur échoue
 
 
-    # Création et lancement d'un thread permettant de gérer les messages envoyés
+    # Création et lancement de deux threads permettant de gérer les messages envoyés et reçus
     try:
         # Configuration du thread pour messages sortants :
         # - target = fonction à exécuter
@@ -131,7 +131,7 @@ def main():
 
         logger_client.info("Thread de traitement des messages sortants lance")
     
-    
+
         # Configuration du thread pour messages entrants :
 
         inbound_thread = Thread(
