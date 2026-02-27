@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[TuiMessage], sock_client: network.socket.socket):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket):
     """
     Traite les messages sortants et les renvoie vers l'interface pour affichage.
     """
@@ -36,8 +36,31 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             # Envoi du message vers le serveur
             network.send_message_as_str(sock_client, f"{msg.sender_name}|{msg.message}")
 
-            # Réception de la réponse du serveur (pour affichage dans l'interface)
+            # Marquage du message comme traité
+            q_outbound.task_done()
+        except Empty:
+            # Timeout atteint, on reboucle pour vérifier is_shutdown
+            continue
+        except Exception as e:
+            logger_client.error(f"Erreur lors du traitement d'un message sortant: {e}")
+        
+    logger_client.info("Thread de traitement des messages sortants s'arrete")
+
+
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket):
+    """
+    Traite les messages entrants et les renvoie vers l'interface pour affichage.
+    """
+
+    logger_client.info("Thread de traitement des messages entrants demarre")
+
+    while not q_inbound.is_shutdown:
+        try:
+            # Récupération d'un message du serveur
             response = network.receive_message_as_str(sock_client)
+
+            # Traitement du message (affichage dans les logs pour l'instant)
+            logger_client.info(f"Message recu du serveur: {response}")
 
             # Envoi du message traité vers la queue inbound pour affichage dans l'interface
             parts = response.split('|', 1)
@@ -47,16 +70,10 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], q_inbound: Queue[Tui
             tui_msg = TuiMessage(sender_name=username, message=content,timestamp=heure)
             q_inbound.put(tui_msg)
 
-            # Marquage du message comme traité
-            q_outbound.task_done()
-        except Empty:
-            # Timeout atteint, on reboucle pour vérifier is_shutdown
-            continue
         except Exception as e:
-            logger_client.error(f"Erreur lors du traitement d'un message sortant: {e}")
-            
-
-    logger_client.info("Thread de traitement des messages sortants s'arrete")
+            logger_client.error(f"Erreur lors du traitement d'un message entrant: {e}")
+        
+    logger_client.info("Thread de traitement des messages entrants s'arrete")
 
 
 def main():
@@ -99,7 +116,7 @@ def main():
 
     # Création et lancement d'un thread permettant de gérer les messages envoyés
     try:
-        # Configuration du thread 
+        # Configuration du thread pour messages sortants :
         # - target = fonction à exécuter
         # - args = arguments à passer à cette fonction
         # - daemon = True -> type de thread plus "discret", qui s'arrêtera automatiquement quand le programme principal se termine
@@ -107,12 +124,25 @@ def main():
         outbound_thread = Thread(
             target=handle_outbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants
-            args=(q_outbound, q_inbound, sock_client),
+            args=(q_outbound, sock_client),
             daemon=True,
         )
         outbound_thread.start()
-        
+
         logger_client.info("Thread de traitement des messages sortants lance")
+    
+    
+        # Configuration du thread pour messages entrants :
+
+        inbound_thread = Thread(
+            target=handle_inbound_messages,
+            # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
+            args=(q_inbound, sock_client),
+            daemon=True,
+        )
+        inbound_thread.start()
+        
+        logger_client.info("Thread de traitement des messages entrants lance")
 
     except Exception as e:
         logger_client.error(f"Thread d'envoi non correctement implemente: {e}")
