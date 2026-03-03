@@ -1,5 +1,8 @@
 from typing import Tuple
+from argon2 import PasswordHasher
 
+# Initialisation du passwordhasher
+ph = PasswordHasher()
 
 def argon2_hash_password(plain_password: str) -> str:
     """
@@ -7,6 +10,7 @@ def argon2_hash_password(plain_password: str) -> str:
     :param plain_password le mot de passe en clair à hacher
     :return le mot de passe haché
     """
+    return ph.hash(plain_password)
 
 
 def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -16,7 +20,12 @@ def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
     :param hashed_password le mot de passe haché à comparer
     :return `True` si les mots de passe sont identiques, sinon `False`
     """
-
+    try:
+        # Retournera True si la vérification entre les deux correspond
+        return ph.verify(hashed_password,plain_password)
+    except Exception:
+        # Si le hash est invalide ou ne correspond pas, lève une erreur et renvoie false
+        return False
 
 def generate_encryption_key(size: int = 256) -> bytes:
     """
