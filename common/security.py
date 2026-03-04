@@ -1,5 +1,7 @@
 from typing import Tuple
 from argon2 import PasswordHasher
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 # Initialisation du passwordhasher
 ph = PasswordHasher()
@@ -64,7 +66,6 @@ def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
         g le générateur du sous-groupe
     """
 
-
 def diffie_hellman_generate_private_key(p: int) -> int:
     """
     Génère une clé privée aléatoire pour Diffie-Hellman dans [2, p-2].
@@ -106,3 +107,16 @@ def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> byt
     :param key_length la longueur désirée en bytes
     :return la clé symétrique prête à l'emploi
     """
+    # On transforme l'int en bytes (format "big-endian" car shared_secret est un int géant)
+    # On calcule la taille nécessaire pour que le secret rentre dans la variable
+    secret_bytes = shared_secret.to_bytes((shared_secret.bit_length() + 7) // 8, byteorder='big')
+    
+    # On utilise HKDF pour mélanger le secret avec une fonction de hachage (SHA256) pour qu'il devienne parfaitement aléatoire visuellement
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=key_length,
+        salt=None, 
+        info=b'handshake data', #Optionnel, sert à lier la clé à un contexte
+    )
+    
+    return hkdf.derive(secret_bytes)
