@@ -1,4 +1,6 @@
 from typing import Tuple
+from Crypto.Cipher import AES
+import os
 from argon2 import PasswordHasher
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -32,19 +34,38 @@ def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
 def generate_encryption_key(size: int = 256) -> bytes:
     """
     Génère une clé de chiffrement d'une taille donnée (size)
-    :param size la taille de la clé en bits à générer
+    :param size la taille de la clé en bits à générer #bits/8 = bytes -> 32 octets (bytes)
     :return la clé de chiffrement générée en bytes
     """
+    size_bytes = size//8
+    # génère size_bytes bytes aléatoires
+    # Ne pas utiliser random.randint car peut être tronqué et prévisible, os car se base sur les bytes des données récoltées par l'os (temp du process, mvmt souris, frappe clavier)
+    return os.urandom(size_bytes) 
 
 
 def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     """
-    Chiffre des données à l'aide d'AES-GCM
+    Chiffre des données à l'aide d'AES-GCM #Chiffrement symétrique, même clef pour crypter que décrypter
     :param plain_data les données en clair à chiffrer
     :param key la clé de chiffrement
     :return le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, ciphertext, tag)
     """
+    # nonce : recommandé à 96 bits, nombre aléatoire à usage unique, évite la détection de patterns --> comme le salt mais n'est jamais le même
+    # header : métadonnées en clair, vérifiées mais non chiffrées lors du déchiffrement
+    # ciphertext : les données chiffrées
+    # tag : signature d'intégrité, permet de détecter toute modification du message
+    nonce=os.urandom(12)
+    
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!# 
+    header= b"header" #b = "ceci est des bytes et non du texte"
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
 
+    cadenas_cipher = AES.new (key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
+    # AES.MODE_GCM : le mode GCM
+    cadenas_cipher.update(header)
+    # chiffrer les données ET générer le tag
+    ciphertext, tag = cadenas_cipher.encrypt_and_digest(plain_data)
+    return (nonce, header, ciphertext, tag)
 
 def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> bytes:
     """
@@ -54,7 +75,13 @@ def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> by
     :param decryption_data le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, tag)
     :return les données déchiffrées (en clair)
     """
-
+    # Extraire nonce, header et tag (ciphertext n'étant pas dans le tuple decryption_data)
+    nonce, header, tag = decryption_data
+    cadenas_cipher = AES.new (key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
+    # AES.MODE_GCM : le mode GCM
+    cadenas_cipher.update(header)
+    plain_data = cadenas_cipher.decrypt_and_verify(encrypted_data, tag) #NB: la clé est déjà dans le cipher, ici vérifie le tag mais ne le retourne pas.
+    return plain_data
 
 def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
     """

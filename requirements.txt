@@ -1,3 +1,4 @@
 secsychat-tui @ git+https://git.helmo.be/p220003/secsychat-tui@main
 argon2-cffi
 cryptography
+pycryptodome
