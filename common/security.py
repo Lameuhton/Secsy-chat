@@ -1,4 +1,6 @@
 from typing import Tuple
+from cryptography.hazmat.primitives.asymmetric import dh
+import secrets
 from Crypto.Cipher import AES
 import os
 from argon2 import PasswordHasher
@@ -92,6 +94,14 @@ def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
         p le nombre premier
         g le générateur du sous-groupe
     """
+    #Lors de l'appel de la fonction - Préciser le nombre de bits : 2048 = taille de la clé
+    #A signaler aux filles - import secrets - Ajouté dans la version 3.6. de Python
+    #La fonction dh.generate_parameters génère un grand nombre premier p et lui associe un générateur g (souvent 2 ou 5)
+    parameters = dh.generate_parameters(generator=2, key_size=bits)
+    numbers = parameters.parameter_numbers()
+    #La fonction parameter_numbers renvoit un objet objet DHParameterNumbers. 
+    #On doit extraire les paramètres p et g pour retourner un tuple de int comme attendu.
+    return (numbers.p, numbers.g)
 
 def diffie_hellman_generate_private_key(p: int) -> int:
     """
@@ -100,6 +110,9 @@ def diffie_hellman_generate_private_key(p: int) -> int:
     :param p le nombre premier sûr (safe prime)
     :return la clé privée générée sur base du nombre premier
     """
+    #On évite 0 et 1 pour avoir une généraration de nombre aléatoire plus sûre.
+    private_key = secrets.randbelow(p - 2) + 2
+    return private_key
 
 
 def diffie_hellman_compute_public_key(private_key: int, p: int, g: int) -> int:
@@ -111,11 +124,12 @@ def diffie_hellman_compute_public_key(private_key: int, p: int, g: int) -> int:
     :param g le générateur du sous-groupe
     :return la clé publique A
     """
+    # La fonction intégrée pow(base, exposant, modulo) est optimisée pour la génération de clés.
+    # De plus, elle évite les dépassements de mémoire.
+    public_key = pow(g, private_key, p)
+    return public_key
 
-
-def diffie_hellman_compute_shared_secret(
-    private_key: int, peer_public_key: int, p: int
-) -> int:
+def diffie_hellman_compute_shared_secret(private_key: int, peer_public_key: int, p: int) -> int:
     """
     Calcule le secret partagé (`B^a mod p`)
 
@@ -124,6 +138,8 @@ def diffie_hellman_compute_shared_secret(
     :param p Le nombre premier sûr (safe prime)
     :return le secret partagé
     """
+    shared_secret = pow(private_key, peer_public_key, p)
+    return shared_secret
 
 
 def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> bytes:
