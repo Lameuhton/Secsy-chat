@@ -1,19 +1,23 @@
-from sqlite3 import Connection
+from sqlite3 import Connection, connect
 from typing import List, Tuple
 
 
-def connect_to_db(path: str) -> Connection
+def connect_to_db(path: str) -> Connection:
     """
     Se connecte à une base de données SQLite et retourne la connection créée
     :param path le chemin vers la base de données SQLite
     :return la connection à la base de données
     """
+    #NB: SQLite est une base de donnée stockée dans un simple fichier sur le disque
+    return connect(path)
 
-def close_connection(connection: Connection)
+def close_connection(connection: Connection):
     """
     Ferme la connexion à la base de données
     :param connection la connexion à fermer
     """
+    connection.close()
+    #La fonction ne demande aucun return du coup pas de return
 
 def insert_data(connection: Connection, table: str, columns: Tuple, data: Tuple):
     """
@@ -23,9 +27,18 @@ def insert_data(connection: Connection, table: str, columns: Tuple, data: Tuple)
     :param columns le nom des colonnes pour lesquelles des données sont insérées
     :param data la valeur des colonnes à insérer
     """
+    #transformer le tuple columns en tuple str
+    colonnes = ", ".join(columns)
+    # Crée un message "safe" à placer devant le message à insérer dans SQL pour éviter les injections qui sera remplacé par les data
+    secu_injection = ", ".join(["?"] * len(data))
+    cursor = connection.cursor()
+    # le ligne pourrait ressembler à: cursor.execute("INSERT INTO {table} ({colonnes}) VALUES ({data})") mais peut être vulnérable aux injections sql (msg d'un utilisateur "DROP TABLE")
+    # du coup on mes data en valeurs à substituer
+    # (f" car il y a des variables dedans
+    cursor.execute(f"INSERT INTO {table} ({colonnes}) VALUES ({secu_injection})", data) # Entre accolades pour dire que ce sont des arguments importés de python
+    connection.commit()
 
-
-def select_data(connection: Connection, query: str) -> List[Tuple]
+def select_data(connection: Connection, query: str) -> List[Tuple]:
     """
     Sélectionne des tuples depuis la base de donnée (connection) et retourne les enregistrements correspondants
     :param connection la connexion déjà établie à la base de données
