@@ -12,7 +12,7 @@ ph = PasswordHasher()
 
 def argon2_hash_password(plain_password: str) -> str:
     """
-    Hache un mot de passe à l'aide Argon2
+    Hache un mot de passe à l'aide Argon2       # Argon2 car lauréat du Password Hashing Compétition
     :param plain_password le mot de passe en clair à hacher
     :return le mot de passe haché
     """
@@ -27,7 +27,7 @@ def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
     :return `True` si les mots de passe sont identiques, sinon `False`
     """
     try:
-        # Retournera True si la vérification entre les deux correspond
+        # Retournera True si la vérification entre les deux correspond, ne peut renvoyer que True ou une erreur
         return ph.verify(hashed_password,plain_password)
     except Exception:
         # Si le hash est invalide ou ne correspond pas, lève une erreur et renvoie false
@@ -36,7 +36,7 @@ def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
 def generate_encryption_key(size: int = 256) -> bytes:
     """
     Génère une clé de chiffrement d'une taille donnée (size)
-    :param size la taille de la clé en bits à générer #bits/8 = bytes -> 32 octets (bytes)
+    :param size la taille de la clé en bits à générer # bits/8 = bytes -> 32 octets (bytes)
     :return la clé de chiffrement générée en bytes
     """
     size_bytes = size//8
@@ -47,7 +47,7 @@ def generate_encryption_key(size: int = 256) -> bytes:
 
 def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     """
-    Chiffre des données à l'aide d'AES-GCM #Chiffrement symétrique, même clef pour crypter que décrypter
+    Chiffre des données à l'aide d'AES-GCM          #Chiffrement symétrique, même clef pour chiffrer que déchiffrer       #AES-GCM car rapide et fiable (moins d'erreur)
     :param plain_data les données en clair à chiffrer
     :param key la clé de chiffrement
     :return le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, ciphertext, tag)
@@ -62,7 +62,7 @@ def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     header= b"header" #b = "ceci est des bytes et non du texte"
     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
 
-    cadenas_cipher = AES.new (key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
+    cadenas_cipher = AES.new(key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
     # AES.MODE_GCM : le mode GCM
     cadenas_cipher.update(header)
     # chiffrer les données ET générer le tag
@@ -79,29 +79,34 @@ def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> by
     """
     # Extraire nonce, header et tag (ciphertext n'étant pas dans le tuple decryption_data)
     nonce, header, tag = decryption_data
-    cadenas_cipher = AES.new (key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
+    cadenas_cipher = AES.new (key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet grâce à sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
     # AES.MODE_GCM : le mode GCM
     cadenas_cipher.update(header)
-    plain_data = cadenas_cipher.decrypt_and_verify(encrypted_data, tag) #NB: la clé est déjà dans le cipher, ici vérifie le tag mais ne le retourne pas.
-    return plain_data
+    try:
+        plain_data = cadenas_cipher.decrypt_and_verify(encrypted_data, tag) #NB: la clé est déjà dans le cadenas_cipher, ici vérifie le tag mais ne le retourne pas.
+        return plain_data
+    except ValueError:
+        print("Erreur : les données ont été altérées (tag non correspondant au message donné).")
 
 def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
     """
-    Génère les paramètres publics Diffie-Hellman.
-
+    Génère les paramètres publics Diffie-Hellman.   # p et g
+    # Avantages : sécurité accrue basé sur des mathématiques complexes (sécurtié des clés et des communications)
+    # Même si la communication est interceptée elle ne peut être décryptée.
     :param bits la taille du nombre premier sûr (safe prime) p en bits.
     :return (p, g)
         p le nombre premier
         g le générateur du sous-groupe
     """
     #Lors de l'appel de la fonction - Préciser le nombre de bits : 2048 = taille de la clé
-    #A signaler aux filles - import secrets - Ajouté dans la version 3.6. de Python
     #La fonction dh.generate_parameters génère un grand nombre premier p et lui associe un générateur g (souvent 2 ou 5)
     parameters = dh.generate_parameters(generator=2, key_size=bits)
     numbers = parameters.parameter_numbers()
-    #La fonction parameter_numbers renvoit un objet objet DHParameterNumbers. 
+    #La fonction parameter_numbers extrait les valeurs p et g dans un objet accessible. 
     #On doit extraire les paramètres p et g pour retourner un tuple de int comme attendu.
-    return (numbers.p, numbers.g)
+    p = numbers.p # number.p est une propirété de l'objet number qui retourne un int
+    g = numbers.g # number.g est une propriété de l'objet number qui retourne un int
+    return (p, g)
 
 def diffie_hellman_generate_private_key(p: int) -> int:
     """
@@ -110,8 +115,9 @@ def diffie_hellman_generate_private_key(p: int) -> int:
     :param p le nombre premier sûr (safe prime)
     :return la clé privée générée sur base du nombre premier
     """
-    #On évite 0 et 1 pour avoir une généraration de nombre aléatoire plus sûre.
-    private_key = secrets.randbelow(p - 2) + 2
+    #On évite 0 et 1 pour avoir une généraration de nombre aléatoire plus sûre 
+    #De même pour p et p-1 qui peuvent donner des nombres prévisibles
+    private_key = secrets.randbelow(p - 3) + 2 # Génère un nbr de 0 à p-4 inclus et on décale tout de +2 -> 2 à p-2 inclus
     return private_key
 
 
@@ -129,7 +135,7 @@ def diffie_hellman_compute_public_key(private_key: int, p: int, g: int) -> int:
     public_key = pow(g, private_key, p)
     return public_key
 
-def diffie_hellman_compute_shared_secret(private_key: int, peer_public_key: int, p: int) -> int:
+def diffie_hellman_compute_shared_secret(private_key: int, peer_public_key: int, p: int) -> int: # "Clé rouge"
     """
     Calcule le secret partagé (`B^a mod p`)
 
@@ -154,12 +160,13 @@ def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> byt
     # On calcule la taille nécessaire pour que le secret rentre dans la variable
     secret_bytes = shared_secret.to_bytes((shared_secret.bit_length() + 7) // 8, byteorder='big')
     
+    # On crée le salt pour ENCORE + de cybersécu
+    salt = os.urandom(32)  # 32 octets aléatoires
+
     # On utilise HKDF pour mélanger le secret avec une fonction de hachage (SHA256) pour qu'il devienne parfaitement aléatoire visuellement
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=key_length,
-        salt=None, 
-        info=b'handshake data', #Optionnel, sert à lier la clé à un contexte
+        salt=salt,
     )
-    
     return hkdf.derive(secret_bytes)
