@@ -57,6 +57,38 @@ def execute_script(connection, path: str):
     :param connection: la connexion existante à la base de données
     :param path: le chemin vers le fichier contenant le script SQL
     """
+    # Vérification de la connexion - Vérifier que :
+    # la connection n’est pas None.
+    # l’objet possède bien une méthode cursor() qui est indispensable pour exécuter des requêtes.
+    # Si erreur --> ValueError
+    if connection is None or not hasattr(connection, "cursor"):
+        raise ValueError("La connexion fournie est invalide ou fermée.") #Ajouter également dans les logs ?
+    # Vérification que le fichier existe bien
+    # Si erreur --> FileNotFoundError
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Fichier SQL introuvable : {path}") #Ajouter également dans les logs ?
+    # Lecture seule du script SQL
+    # Placement du contenu du fichier dans la variable script_content
+    # Rappel : le with garantit la fermeture propre du fichier
+    with open(path, "r", encoding="utf-8") as file:
+        script_content = file.read()
+    # Exécution du script
+    try:
+        #Création du curseur (Pour rappel : il s'agit d'un objet qui permet d'envoyer des requêtes SQL dans la base)
+        cursor = connection.cursor()
+        #La méthode executescript (possédée ici par sqlite3) est utilisée pour exécuter plusieurs requêtes d’un coup.
+        cursor.executescript(script_content)
+        #Pour rappel, le commit valide les changements dans la base de données.
+        connection.commit()
+    #Si une erreur survient :
+    except Exception as e:
+        # On annule les changements pour éviter de laisser la base dans un état partiel
+        # Si erreur --> Exception
+        connection.rollback()
+        raise Exception(f"Erreur lors de l'exécution du script SQL : {e}") #Ajouter également dans les logs ?
+    finally:
+        # Fermeture du curseur même si une erreur survient et libère les ressources
+        cursor.close()
 
 def execute_seed(connection):
     """
