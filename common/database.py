@@ -31,7 +31,7 @@ def insert_data(connection: Connection, table: str, columns: Tuple, data: Tuple)
     colonnes = ", ".join(columns)
     # Crée un message "safe" à placer devant le message à insérer dans SQL pour éviter les injections qui sera remplacé par les data
     secu_injection = ", ".join(["?"] * len(data))
-    cursor = connection.cursor()
+    cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
     # le ligne pourrait ressembler à: cursor.execute("INSERT INTO {table} ({colonnes}) VALUES ({data})") mais peut être vulnérable aux injections sql (msg d'un utilisateur "DROP TABLE")
     # du coup on mes data en valeurs à substituer
     # (f" car il y a des variables dedans
@@ -46,6 +46,10 @@ def select_data(connection: Connection, query: str) -> List[Tuple]:
     :param query: la requête SQL à exécuter sur la base de données (connection)
     :return: les enregistrements correspondants au résultat de la reqête
     """
+    cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
+    cursor.execute(query)
+    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    return resultat
 
 def execute_script(connection, path: str):
     """

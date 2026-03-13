@@ -13,8 +13,8 @@ ph = PasswordHasher()
 def argon2_hash_password(plain_password: str) -> str:
     """
     Hache un mot de passe à l'aide Argon2       # Argon2 car lauréat du Password Hashing Compétition
-    :param plain_password le mot de passe en clair à hacher
-    :return le mot de passe haché
+    :param plain_password: le mot de passe en clair à hacher
+    :return: le mot de passe haché
     """
     return ph.hash(plain_password)
 
@@ -22,9 +22,9 @@ def argon2_hash_password(plain_password: str) -> str:
 def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Vérifie si un mot de passe en clair est identique à sa version hashée à l'aide d'Argon2
-    :param plain_password le mot de passe en clair à comparer
-    :param hashed_password le mot de passe haché à comparer
-    :return `True` si les mots de passe sont identiques, sinon `False`
+    :param plain_password: le mot de passe en clair à comparer
+    :param hashed_password: le mot de passe haché à comparer
+    :return: `True` si les mots de passe sont identiques, sinon `False`
     """
     try:
         # Retournera True si la vérification entre les deux correspond, ne peut renvoyer que True ou une erreur
@@ -36,8 +36,8 @@ def argon2_verify_password(plain_password: str, hashed_password: str) -> bool:
 def generate_encryption_key(size: int = 256) -> bytes:
     """
     Génère une clé de chiffrement d'une taille donnée (size)
-    :param size la taille de la clé en bits à générer # bits/8 = bytes -> 32 octets (bytes)
-    :return la clé de chiffrement générée en bytes
+    :param size: la taille de la clé en bits à générer # bits/8 = bytes -> 32 octets (bytes)
+    :return: la clé de chiffrement générée en bytes
     """
     size_bytes = size//8
     # génère size_bytes bytes aléatoires
@@ -48,9 +48,9 @@ def generate_encryption_key(size: int = 256) -> bytes:
 def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     """
     Chiffre des données à l'aide d'AES-GCM          #Chiffrement symétrique, même clef pour chiffrer que déchiffrer       #AES-GCM car rapide et fiable (moins d'erreur)
-    :param plain_data les données en clair à chiffrer
-    :param key la clé de chiffrement
-    :return le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, ciphertext, tag)
+    :param plain_data: les données en clair à chiffrer
+    :param key: la clé de chiffrement
+    :return: le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, ciphertext, tag)
     """
     # nonce : recommandé à 96 bits, nombre aléatoire à usage unique, évite la détection de patterns --> comme le salt mais n'est jamais le même
     # header : métadonnées en clair, vérifiées mais non chiffrées lors du déchiffrement
@@ -72,10 +72,10 @@ def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
 def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> bytes:
     """
     Déchiffre des données à l'aide d'AES GCM
-    :param encrypted_data les données à déchiffrer
-    :param key la clé de déchiffrement
-    :param decryption_data le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, tag)
-    :return les données déchiffrées (en clair)
+    :param encrypted_data: les données à déchiffrer
+    :param key: la clé de déchiffrement
+    :param decryption_data: le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, tag)
+    :return: les données déchiffrées (en clair)
     """
     # Extraire nonce, header et tag (ciphertext n'étant pas dans le tuple decryption_data)
     nonce, header, tag = decryption_data
@@ -93,8 +93,8 @@ def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
     Génère les paramètres publics Diffie-Hellman.   # p et g
     # Avantages : sécurité accrue basé sur des mathématiques complexes (sécurtié des clés et des communications)
     # Même si la communication est interceptée elle ne peut être décryptée.
-    :param bits la taille du nombre premier sûr (safe prime) p en bits.
-    :return (p, g)
+    :param bits: la taille du nombre premier sûr (safe prime) p en bits.
+    :return: (p, g)
         p le nombre premier
         g le générateur du sous-groupe
     """
@@ -112,8 +112,8 @@ def diffie_hellman_generate_private_key(p: int) -> int:
     """
     Génère une clé privée aléatoire pour Diffie-Hellman dans [2, p-2].
 
-    :param p le nombre premier sûr (safe prime)
-    :return la clé privée générée sur base du nombre premier
+    :param p: le nombre premier sûr (safe prime)
+    :return: la clé privée générée sur base du nombre premier
     """
     #On évite 0 et 1 pour avoir une généraration de nombre aléatoire plus sûre 
     #De même pour p et p-1 qui peuvent donner des nombres prévisibles
@@ -125,10 +125,10 @@ def diffie_hellman_compute_public_key(private_key: int, p: int, g: int) -> int:
     """
     Calcule la clé publique `g^a mod p`.
 
-    :param private_key Clé privée a
-    :param p le nombre premier sûr (safe prime)
-    :param g le générateur du sous-groupe
-    :return la clé publique A
+    :param private_key: Clé privée a
+    :param p: le nombre premier sûr (safe prime)
+    :param g: le générateur du sous-groupe
+    :return: la clé publique A
     """
     # La fonction intégrée pow(base, exposant, modulo) est optimisée pour la génération de clés.
     # De plus, elle évite les dépassements de mémoire.
@@ -139,12 +139,12 @@ def diffie_hellman_compute_shared_secret(private_key: int, peer_public_key: int,
     """
     Calcule le secret partagé (`B^a mod p`)
 
-    :param private_key la Clé privée locale a
-    :param peer_public_key la clé publique reçue B
-    :param p Le nombre premier sûr (safe prime)
-    :return le secret partagé
+    :param private_key: la Clé privée locale a
+    :param peer_public_key: la clé publique reçue B
+    :param p: Le nombre premier sûr (safe prime)
+    :return: le secret partagé
     """
-    shared_secret = pow(private_key, peer_public_key, p)
+    shared_secret = pow(peer_public_key, private_key, p)
     return shared_secret
 
 
@@ -152,9 +152,9 @@ def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> byt
     """
     Dérive une clé symétrique à partir du secret partagé
 
-    :param shared_secret le secret Diffie-Hellman brut
-    :param key_length la longueur désirée en bytes
-    :return la clé symétrique prête à l'emploi
+    :param shared_secret: le secret Diffie-Hellman brut
+    :param key_length: la longueur désirée en bytes
+    :return: la clé symétrique prête à l'emploi
     """
     # On transforme l'int en bytes (format "big-endian" car shared_secret est un int géant)
     # On calcule la taille nécessaire pour que le secret rentre dans la variable
