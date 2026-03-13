@@ -1,6 +1,6 @@
 from sqlite3 import Connection, connect
 from typing import List, Tuple
-
+import os
 
 def connect_to_db(path: str) -> Connection:
     """
