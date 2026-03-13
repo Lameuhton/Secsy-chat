@@ -160,13 +160,10 @@ def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> byt
     # On calcule la taille nécessaire pour que le secret rentre dans la variable
     secret_bytes = shared_secret.to_bytes((shared_secret.bit_length() + 7) // 8, byteorder='big')
     
-    # On crée le salt pour ENCORE + de cybersécu
-    salt = os.urandom(32)  # 32 octets aléatoires
-
     # On utilise HKDF pour mélanger le secret avec une fonction de hachage (SHA256) pour qu'il devienne parfaitement aléatoire visuellement
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=key_length,
-        salt=salt,
+        salt=None,
     )
     return hkdf.derive(secret_bytes)

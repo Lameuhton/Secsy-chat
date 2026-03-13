@@ -63,3 +63,19 @@ def execute_seed(connection):
     Si elles n'existent pas, crée les tables, les colonnes et contraintes associées et insère les données nécessaires
     :param connection: la connexion existante à la base de données
     """
+    cursor = connection.cursor()
+    # On crée la table users si elle n'existe pas
+    # UNIQUE sur username pour éviter les doublons
+    # TEXT plutot que Varchar car SQLite n'a pas de type de données spécifique pour les chaînes de caractères, il utilise TEXT pour stocker les chaînes de caractères de longueur variable
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            secret TEXT NOT NULL,
+            created_at DATETIME NOT NULL,
+            last_activity_at DATETIME NOT NULL
+        )
+    """)
+    connection.commit()
+
+
