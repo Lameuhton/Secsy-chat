@@ -144,7 +144,7 @@ def diffie_hellman_compute_shared_secret(private_key: int, peer_public_key: int,
     :param p Le nombre premier sûr (safe prime)
     :return le secret partagé
     """
-    shared_secret = pow(private_key, peer_public_key, p)
+    shared_secret = pow(peer_public_key, private_key, p)
     return shared_secret
 
 
@@ -160,13 +160,10 @@ def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> byt
     # On calcule la taille nécessaire pour que le secret rentre dans la variable
     secret_bytes = shared_secret.to_bytes((shared_secret.bit_length() + 7) // 8, byteorder='big')
     
-    # On crée le salt pour ENCORE + de cybersécu
-    salt = os.urandom(32)  # 32 octets aléatoires
-
     # On utilise HKDF pour mélanger le secret avec une fonction de hachage (SHA256) pour qu'il devienne parfaitement aléatoire visuellement
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=key_length,
-        salt=salt,
+        salt=None,
     )
     return hkdf.derive(secret_bytes)
