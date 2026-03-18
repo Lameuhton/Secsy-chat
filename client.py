@@ -4,6 +4,7 @@ from threading import Thread
 import time
 from common import network
 from secsychat_tui import SecsyChatTui, TuiMessage
+from getpass import getpass
 
 # CONFIGURATION DU LOGGER
 logging.basicConfig(
@@ -83,6 +84,8 @@ def main():
     if not pseudo:
         pseudo = "Anonyme"
 
+    password = getpass("Entrez votre mot de passe: ") # Pas de input pour pas qu'il soit marqué en "clair" dans l'interface utilisateur (on est en sécu quand-même...)
+
     # Initialisation de la queue pour les messages reçus à afficher dans l'interface
     try:
         q_inbound = Queue[TuiMessage]()
@@ -113,6 +116,8 @@ def main():
         logger_client.error(f"Erreur lors de la connexion au serveur: {e}")
         return # Arrêt du programme si la connexion au serveur échoue
 
+    # Envoi du <pseudonyme>|<mot de passe en clair> au serveur
+    network.send_message_as_str(sock_client, f"{pseudo}|{password}") # Sensible au man in the middle mais l'énoncé le demande ainsi
 
     # Création et lancement de deux threads permettant de gérer les messages envoyés et reçus
     try:

@@ -1,6 +1,10 @@
 from common import network
 from threading import Thread, Lock
 import logging
+from common import database
+from common import data
+
+DB_PATH = "database.db"
 
 # CONFIGURATION DU LOGGER
 logging.basicConfig(
@@ -17,11 +21,20 @@ clients_lock = Lock()
 
 
 def gerer_client(sock_client, addr): # Arguments générés dans le try
+            
+    # Premier message = authentification (avant la boucle)
+    premier_message = network.receive_message_as_str(sock_client)
+    pseudo, password = premier_message.split("|") # Car on l'a mis en forme <pseudo>|<paswd>
+    if not data.user_exists(pseudo):
+        data.create_user(pseudo, password)
+    else:
+        user = data.get_user(pseudo)
+        verif_mdp = user[2] # Car user = (id, name, secret, created_at, last_activity_at)
 
     with clients_lock: # Section critique protégée
         # Ajout du client dans le dictionnaire des clients connectés (contiendra des sockets)
         clients_connectes[addr] = sock_client # sock_client = connexion faite grâce à addr (ip, port)
-        
+    
     # Connexion avec client
     while True:
         message = network.receive_message_as_str(sock_client)
@@ -44,6 +57,10 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
 
 def main():
 
+    connection = database.connect_to_db(DB_PATH) # Ouvre la connexion à la BD
+    database.execute_seed(connection) # Crée la BD
+    database.close_connection(connection) # Fermer la connexion
+    
     sock_server = network.start_tcp_server("127.0.0.1", 4000)
 
 
