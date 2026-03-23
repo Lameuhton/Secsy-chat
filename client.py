@@ -33,13 +33,21 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # - Traitement cryptographique
             # - Sauvegarde dans une base de données
             # etc
-
             
+
             #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             # Envoi du message après chiffrement vers le serveur
-            msg_bytes = msg.message.encode('utf-8')
-            msg_encrypted = security.aes_encrypt(msg_bytes, aes_key)
-            network.send_message_as_str(sock_client, f"{msg.sender_name}|{msg.msg_encrypted}")
+            
+            # Préparation du message complet à envoyer (pseudo|message)
+            message_complet = f"{msg.sender_name}|{msg.message}"
+            # Encodage du message en byte
+            msg_bytes = message_complet.encode('utf-8')
+            # Récupération des retours de la fonction aes_encrypt (tuple contenant nonce, header, cyphertext, tag)
+            nonce, ciphertext, tag = security.aes_encrypt(msg_bytes, aes_key)
+            # Préparation du payload (données qu'on veut envoyer), payload est en byte
+            payload = nonce + tag + ciphertext
+            # Envoi du payload (charge)
+            network.send_message(sock_client, payload)
 
             # Marquage du message comme traité
             q_outbound.task_done()
@@ -62,13 +70,25 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
     while not q_inbound.is_shutdown:
         try:
             # Récupération d'un message du serveur
-            response = network.receive_message_as_str(sock_client)
+            response = network.receive_message(sock_client)
 
+            # Déchiffrement de la réponse
+            # Récupère le nonce, tage et ciphertext (notre message chiffré)
+            nonce = response[:12]
+            tag = response[12:28]
+            ciphertext = response[28:]
+            
+            # Déchiffre le message avec le nonce et le tag
+            plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
+            
+            # Décode le message en str
+            message = plaindata.decode('utf-8')
+            
             # Traitement du message (affichage dans les logs pour l'instant)
-            logger_client.info(f"Message recu du serveur: {response}")
+            logger_client.info(f"Message recu du serveur: {message}")
 
             # Envoi du message traité vers la queue inbound pour affichage dans l'interface
-            parts = response.split('|', 1)
+            parts = message.split('|', 1)
             username, content = parts
             heure = time.time()
             # On crée l'objet pour la TUI

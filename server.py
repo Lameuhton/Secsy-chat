@@ -59,15 +59,31 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     # Connexion avec client
     while True:
         message = network.receive_message_as_str(sock_client)
+        
         if not message: # Client déconnecté
             break
-        # Renvoie le message au client pour affichage
-
+        
+        # Déchiffre le message reçu
+        # Récupère le nonce, tage et ciphertext (notre message chiffré)
+        nonce = message[:12]
+        tag = message[12:28]
+        ciphertext = message[28:]
+        
+        # Déchiffre le message avec le nonce et le tag
+        plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
+        
+        # Chiffre avec la clé AES le message déchiffré juste au dessus
+        nonce, cyphertext, tag = security.aes_encrypt(plaindata,aes_key)
+        
+        # Préparation du payload
+        payload = nonce + cyphertext + tag
+        
         # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
         with clients_lock: 
             # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client.
-            for client_addr, client_sock in clients_connectes.items(): 
-                network.send_message_as_str(client_sock, message)
+            for client_addr, client_sock in clients_connectes.items():
+                # Renvoi du payload au(x) client(x) (en byte car le payload est en byte)
+                network.send_message(client_sock, payload)
 
     # Déconnexion du client, on sort de la boucle et on ferme le socket
     with clients_lock:
