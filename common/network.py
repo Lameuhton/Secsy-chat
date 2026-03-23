@@ -45,8 +45,9 @@ def send_message(socket: socket.socket, message: bytes):
     :param message le message à envoyer en bytes
     """
     # Les messages sont ici en bytes car socket gèrent les messages en bytes
-    socket.sendall(message)
-
+    long = len(message) # Nous permettra de savoir via le header exactement combien d'octets lire, évitant ainsi de lire trop ou pas assez
+    header = long.to_bytes(10, byteorder='big')
+    socket.sendall(header + message)
 
 def receive_message(socket: socket.socket) -> bytes:
     """
@@ -54,8 +55,28 @@ def receive_message(socket: socket.socket) -> bytes:
     :param socket le socket à utiliser pour réceptionner le message
     :return le message réceptionné en bytes
     """
-    # 2000 est la taille maximale du message à recevoir en bytes (buffer size)
-    return socket.recv(2000)
+    # ATTENTION ! socket.recv() consome ce qu'il lit donc en lisant le header il ne restera dans le socket que le msg
+    
+    # Lire exactement 10 bytes pour le header
+    header = b"" # L'initialise en byte
+    # La suite est faite pour s'assurer qu'on reçoive tous les bytes de header
+    # Car recv() peut ne pas recevoir la totalité de ce qui lui a été envoyé
+    while len(header) < 10:
+        packet = socket.recv(10 - len(header))
+        if not packet:
+            raise ConnectionError("Connexion fermée")
+        header += packet
+    long = int.from_bytes(header, byteorder='big') #Convertit en int pour comprendre la taille indiquée dans le header
+    
+    # Lire exactement long bytes pour le message
+    data = b""
+    while len(data) < long:
+        packet = socket.recv(long - len(data))
+        if not packet:
+            raise ConnectionError("Connexion fermée")
+        data += packet
+
+    return data
 
 def send_message_as_str(socket: socket.socket, message: str):
     """

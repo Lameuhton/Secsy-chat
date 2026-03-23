@@ -96,7 +96,7 @@ def execute_seed(connection):
     :param connection: la connexion existante à la base de données
     """
     cursor = connection.cursor()
-    # On crée la table users si elle n'existe pas
+    # On crée la table user si elle n'existe pas
     # UNIQUE sur username pour éviter les doublons
     # TEXT plutot que Varchar car SQLite n'a pas de type de données spécifique pour les chaînes de caractères, il utilise TEXT pour stocker les chaînes de caractères de longueur variable
     cursor.execute("""

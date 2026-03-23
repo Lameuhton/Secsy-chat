@@ -1,8 +1,6 @@
-from common import network
+from common import network, database, data, security
 from threading import Thread, Lock
 import logging
-from common import database
-from common import data
 
 DB_PATH = "database.db"
 
@@ -21,15 +19,38 @@ clients_lock = Lock()
 
 
 def gerer_client(sock_client, addr): # Arguments générés dans le try
-            
+
+    # Générer les paramètres de la clé publique
+    # Envoi de p et g au client
+    p, g = security.diffie_hellman_generate_public_parameters(2048)
+    network.send_message(sock_client, p.to_bytes(256, byteorder='big')) # 2048 bits // 8 = 256 bytes
+    network.send_message(sock_client, g.to_bytes(8, byteorder='big')) # Presque tjrs 2 ou 5 donc 8 bytes
+
+    # Générer les clés et envoyer au client la publique
+    private_key = security.diffie_hellman_generate_private_key(p)
+    public_key = security.diffie_hellman_compute_public_key(private_key, p, g)
+    network.send_message(sock_client, public_key.to_bytes(256, byteorder='big')) # Car send message envoie en bytes
+
+    # Recevoir clé publ du client et calculer clé partagée + clé AES
+    peer_public_key = int.from_bytes(network.receive_message(sock_client), byteorder='big') # Clé publique du client != clé publ du serveur
+    shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, p)
+    aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
+    
     # Premier message = authentification (avant la boucle)
     premier_message = network.receive_message_as_str(sock_client)
     pseudo, password = premier_message.split("|") # Car on l'a mis en forme <pseudo>|<paswd>
     if not data.user_exists(pseudo):
-        data.create_user(pseudo, password)
+        hashed_password = security.argon2_hash_password(password)
+        data.create_user(pseudo, hashed_password)
+        logger_server.info(f"Nouvel utilisateur créé : {pseudo}")
     else:
         user = data.get_user(pseudo)
         verif_mdp = user[2] # Car user = (id, name, secret, created_at, last_activity_at)
+        if not security.argon2_verify_password(password, verif_mdp): # Fonction retourne True/False
+            logger_server.warning(f"Tentative de connexion échouée pour : {pseudo}")
+            sock_client.close()
+            return # Permet de ne pas rentrer dans la boucle suivante si le client n'a pas rentré le bon mdp
+        logger_server.info(f"Utilisateur authentifié : {pseudo}")
 
     with clients_lock: # Section critique protégée
         # Ajout du client dans le dictionnaire des clients connectés (contiendra des sockets)

@@ -58,10 +58,8 @@ def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     # tag : signature d'intégrité, permet de détecter toute modification du message
     nonce=os.urandom(12)
     
-    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!# 
     header= b"header" #b = "ceci est des bytes et non du texte"
-    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
-
+    
     cadenas_cipher = AES.new(key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
     # AES.MODE_GCM : le mode GCM
     cadenas_cipher.update(header)
