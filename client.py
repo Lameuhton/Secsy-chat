@@ -2,7 +2,7 @@ import logging
 from queue import Queue, Empty
 from threading import Thread
 import time
-from common import network
+from common import network, security
 from secsychat_tui import SecsyChatTui, TuiMessage
 from getpass import getpass
 
@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes):
     """
     Traite les messages sortants et les renvoie au serveur.
     """
@@ -34,8 +34,12 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # - Sauvegarde dans une base de données
             # etc
 
-            # Envoi du message vers le serveur
-            network.send_message_as_str(sock_client, f"{msg.sender_name}|{msg.message}")
+            
+            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # Envoi du message après chiffrement vers le serveur
+            msg_bytes = msg.message.encode('utf-8')
+            msg_encrypted = security.aes_encrypt(msg_bytes, aes_key)
+            network.send_message_as_str(sock_client, f"{msg.sender_name}|{msg.msg_encrypted}")
 
             # Marquage du message comme traité
             q_outbound.task_done()
@@ -48,7 +52,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
 
-def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket):
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
     """
@@ -116,6 +120,24 @@ def main():
         logger_client.error(f"Erreur lors de la connexion au serveur: {e}")
         return # Arrêt du programme si la connexion au serveur échoue
 
+    
+    # ECHANGE DIFFIE-HELLMAN
+    
+    # Réception de p et g du serveur
+    p = int.from_bytes(network.receive_message(sock_client), byteorder='big')
+    g = int.from_bytes(network.receive_message(sock_client), byteorder='big')
+
+    # Recevoir, générer les clés et envoyer au serveur la publique
+    peer_public_key = int.from_bytes(network.receive_message(sock_client), byteorder='big')
+    private_key = security.diffie_hellman_generate_private_key(p)
+    public_key = security.diffie_hellman_compute_public_key(private_key, p, g)
+    network.send_message(sock_client, public_key.to_bytes(256, byteorder='big')) # Car send message envoie en bytes
+
+    # Calculer clé partagée et clé AES
+    shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, p)
+    aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
+
+
     # Envoi du <pseudonyme>|<mot de passe en clair> au serveur
     network.send_message_as_str(sock_client, f"{pseudo}|{password}") # Sensible au man in the middle mais l'énoncé le demande ainsi
 
@@ -128,8 +150,8 @@ def main():
         
         outbound_thread = Thread(
             target=handle_outbound_messages,
-            # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants
-            args=(q_outbound, sock_client),
+            # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants et aes
+            args=(q_outbound, sock_client, aes_key),
             daemon=True,
         )
         outbound_thread.start()
@@ -142,7 +164,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client),
+            args=(q_inbound, sock_client, aes_key),
             daemon=True,
         )
         inbound_thread.start()
