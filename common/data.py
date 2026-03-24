@@ -36,7 +36,7 @@ def create_user(name: str, hashed_password):
     database.close_connection(connexion)
 
 
-def get_user(name: str) -> Tuple[str, str, str, str, str]:
+def get_user(name: str) -> tuple:
     """
     Récupère les informations d'un utilisateur existant à partir de son pseudonyme.
 

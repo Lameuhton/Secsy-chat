@@ -12,3 +12,5 @@ __pycache__/
 # Journal (de bord)
 app_server.log
 app_client.log
+
+database.db
