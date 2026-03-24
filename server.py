@@ -58,7 +58,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     
     # Connexion avec client
     while True:
-        message = network.receive_message_as_str(sock_client)
+        message = network.receive_message(sock_client)
         
         if not message: # Client déconnecté
             break
@@ -73,7 +73,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
         
         # Chiffre avec la clé AES le message déchiffré juste au dessus
-        nonce, cyphertext, tag = security.aes_encrypt(plaindata,aes_key)
+        nonce, tag, cyphertext = security.aes_encrypt(plaindata,aes_key)
         
         # Préparation du payload
         payload = nonce + cyphertext + tag
