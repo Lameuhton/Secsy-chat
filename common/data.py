@@ -1,4 +1,4 @@
-import database
+from common import database
 from nanoid import generate
 from datetime import datetime
 

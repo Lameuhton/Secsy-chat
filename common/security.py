@@ -58,14 +58,14 @@ def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     # tag : signature d'intégrité, permet de détecter toute modification du message
     nonce=os.urandom(12)
     
-    header= b"header" #b = "ceci est des bytes et non du texte"
+    #header= b"header" #b = "ceci est des bytes et non du texte"
     
     cadenas_cipher = AES.new(key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet avec sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
     # AES.MODE_GCM : le mode GCM
-    cadenas_cipher.update(header)
+    #cadenas_cipher.update(header)
     # chiffrer les données ET générer le tag
     ciphertext, tag = cadenas_cipher.encrypt_and_digest(plain_data)
-    return (nonce, header, ciphertext, tag)
+    return (nonce, ciphertext, tag)
 
 def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> bytes:
     """
@@ -76,10 +76,10 @@ def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> by
     :return: les données déchiffrées (en clair)
     """
     # Extraire nonce, header et tag (ciphertext n'étant pas dans le tuple decryption_data)
-    nonce, header, tag = decryption_data
+    nonce, tag = decryption_data
     cadenas_cipher = AES.new (key, AES.MODE_GCM, nonce=nonce) # Prépare l'objet grâce à sa clé et le nonce, comme préparer un cadenas avec sa combinaison.
     # AES.MODE_GCM : le mode GCM
-    cadenas_cipher.update(header)
+    #cadenas_cipher.update(header)
     try:
         plain_data = cadenas_cipher.decrypt_and_verify(encrypted_data, tag) #NB: la clé est déjà dans le cadenas_cipher, ici vérifie le tag mais ne le retourne pas.
         return plain_data
