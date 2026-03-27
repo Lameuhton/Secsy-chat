@@ -2,6 +2,7 @@
 # Créez des dictionnaires ou des data classes pour structurer le message
 #
 
+import json
 
 def parse_message(payload: bytes):
     """
@@ -9,3 +10,55 @@ def parse_message(payload: bytes):
     :param payload la charge (payload) en bytes
     :return le message sous forme d'un dictionnaire ou d'un objet
     """
+
+    # Décodage bytes → string
+    json_str = payload.decode('utf-8')
+
+    # Parsing JSON → dictionnaire Python
+    data = json.loads(json_str)
+
+    # Extraction des informations importantes
+
+    timestamp = data.get("timestamp")
+    sender = data.get("sender", {})
+    sender_name = sender.get("name")
+    sender_id = sender.get("id")
+    recipient = data.get("recipient", {})
+    recipient_type = recipient.get("type")
+    payload_data = data.get("payload", {})
+    payload_cipher_text = payload_data.get("cipher_text")
+
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # Par encore traités pour cette itération car par encore de notion de cannaux et d'intégrité
+    # (mais à uncomment et à rajouter dans le return plus tard )
+
+    #recipient_id = recipient.get("id")
+    #recipient_name = recipient.get("name")
+    #payload_cipher_text_size = payload_data.get("cipher_text_size")
+    #payload_cipher_text_encrypted_key = payload_data.get("cipher_text_encrypted_key")
+    #integrity = data.get("integrity", {})
+    #integrity_checksum = integrity.get("checksum")
+    #integrity_signature = integrity.get("signature")
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    return {
+        "timestamp": timestamp,
+        "sender": {
+            "id": sender_id,
+            "name": sender_name
+            },
+        "recipient": {
+            "type": recipient_type,
+            "id": "xxxxxxxxxxxxxxxxxxxx",
+            "name": "X"
+            },
+        "payload": {
+            "cipher_text": payload_cipher_text,
+            "cipher_text_size": "1",
+            "cipher_text_encrypted_key": "x"
+            },
+        "integrity": {
+            "checksum": "xxx",
+            "signature": "xxx"
+        }
+    }
