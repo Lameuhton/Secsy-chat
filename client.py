@@ -26,7 +26,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # Récupération d'un message avec timeout de 0.5 seconde
             msg = q_outbound.get(timeout=0.5)
             # Traitement du message (affichage dans les logs pour l'instant)
-            logger_client.info(f"{msg.sender_name}|{msg.message}")
+            logger_client.info(f"Message envoyé au serveur:{msg.sender_name}|{msg.message}")
 
             # Ici on ajoutera notre logique de traitement :
             # - Envoi vers un serveur
@@ -68,35 +68,36 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
     logger_client.info("Thread de traitement des messages entrants demarre")
 
     while not q_inbound.is_shutdown:
-        try:
-            # Récupération d'un message du serveur
-            response = network.receive_message(sock_client)
+        #try:
 
-            # Déchiffrement de la réponse
-            # Récupère le nonce, tage et ciphertext (notre message chiffré)
-            nonce = response[:12]
-            tag = response[12:28]
-            ciphertext = response[28:]
-            
-            # Déchiffre le message avec le nonce et le tag
-            plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
-            
-            # Décode le message en str
-            message = plaindata.decode('utf-8')
-            
-            # Traitement du message (affichage dans les logs pour l'instant)
-            logger_client.info(f"Message recu du serveur: {message}")
+        # Récupération d'un message du serveur
+        response = network.receive_message(sock_client)
 
-            # Envoi du message traité vers la queue inbound pour affichage dans l'interface
-            parts = message.split('|', 1)
-            username, content = parts
-            heure = time.time()
-            # On crée l'objet pour la TUI
-            tui_msg = TuiMessage(sender_name=username, message=content,timestamp=heure)
-            q_inbound.put(tui_msg)
+        # Déchiffrement de la réponse
+        # Récupère le nonce, tage et ciphertext (notre message chiffré)
+        nonce = response[:12]
+        tag = response[12:28]
+        ciphertext = response[28:]
+        
+        # Déchiffre le message avec le nonce et le tag
+        plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
+        
+        # Décode le message en str
+        message = plaindata.decode('utf-8')
+        
+        # Traitement du message (affichage dans les logs pour l'instant)
+        logger_client.info(f"Message recu du serveur: {message}")
 
-        except Exception as e:
-            logger_client.error(f"Erreur lors du traitement d'un message entrant: {e}")
+        # Envoi du message traité vers la queue inbound pour affichage dans l'interface
+        parts = message.split('|', 1)
+        username, content = parts
+        heure = time.time()
+        # On crée l'objet pour la TUI
+        tui_msg = TuiMessage(sender_name=username, message=content,timestamp=heure)
+        q_inbound.put(tui_msg)
+
+        #except Exception as e:
+            #logger_client.error(f"Erreur lors du traitement d'un message entrant: {e}")
         
     logger_client.info("Thread de traitement des messages entrants s'arrete")
 

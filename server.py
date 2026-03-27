@@ -57,7 +57,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
 
     with clients_lock: # Section critique protégée
         # Ajout du client dans le dictionnaire des clients connectés (contiendra des sockets)
-        clients_connectes[addr] = sock_client # sock_client = connexion faite grâce à addr (ip, port)
+        clients_connectes[addr] = (sock_client, aes_key) # sock_client = connexion faite grâce à addr (ip, port), aes_key = clé de chiffrement symétrique partagée entre le serveur et ce client
     
     # Connexion avec client
     while True:
@@ -75,16 +75,18 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         # Déchiffre le message avec le nonce et le tag
         plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
         
-        # Chiffre avec la clé AES le message déchiffré juste au dessus
-        nonce, tag, cyphertext = security.aes_encrypt(plaindata,aes_key)
-        
-        # Préparation du payload
-        payload = nonce + cyphertext + tag
+        logger_server.info(f"Serveur: Message reçu de {pseudo} ({addr}) : {plaindata.decode('utf-8')}")
         
         # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
         with clients_lock: 
-            # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client.
-            for client_addr, client_sock in clients_connectes.items():
+            # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client ainsi que leur clé AES associée
+            for addr, (client_sock, client_key) in clients_connectes.items():
+
+                # Rechiffre le message avec la clé AES de chaque client
+                nonce, cyphertext, tag = security.aes_encrypt(plaindata, client_key)
+                # Préparation du payload
+                payload = nonce + tag + cyphertext
+
                 # Renvoi du payload au(x) client(x) (en byte car le payload est en byte)
                 network.send_message(client_sock, payload)
 

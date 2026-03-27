@@ -6,9 +6,12 @@ import os
 from argon2 import PasswordHasher
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+import logging
 
 # Initialisation du passwordhasher
 ph = PasswordHasher()
+
+logger_client = logging.getLogger(__name__)
 
 def argon2_hash_password(plain_password: str) -> str:
     """
@@ -83,8 +86,8 @@ def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> by
     try:
         plain_data = cadenas_cipher.decrypt_and_verify(encrypted_data, tag) #NB: la clé est déjà dans le cadenas_cipher, ici vérifie le tag mais ne le retourne pas.
         return plain_data
-    except ValueError:
-        print("Erreur : les données ont été altérées (tag non correspondant au message donné).")
+    except ValueError as e:
+        logger_client.error(f"Erreur de déchiffrement : {e}", exc_info=True)
 
 def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
     """
