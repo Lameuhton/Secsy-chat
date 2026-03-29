@@ -14,7 +14,7 @@ class ExchangeType(Enum):
 
 
 # Rappel structure d'un échange:
-#   [0:10]   → header (taille)
+#   [0:10]   → header (taille) (consommé par la fonction receive_message, on n'y a plus accès dans les fonctions de parsing)
 #   [10:11]  → type
 #   [11:]    → charge/payload (données utiles, ex: message chiffré, instruction, événement, etc.)
 
