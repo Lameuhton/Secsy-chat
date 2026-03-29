@@ -24,13 +24,13 @@ def get_type(exchange: bytes) -> ExchangeType:
     :param exchange l'échange en bytes
     :return le type de l'échange
     """
+    # IMPORTANT: ici ce qu'on a est le byte de type + le payload car le header avec la taille
+    # a été consommé par la fonction receive_message (socket.recv() consome ce qu'il lit)
 
     try:
-        # On récupère le 11e byte (index 10 car on commence à 0)
-        # IMPORTANT : on prend [10:11] et PAS [10]
-        # → [10:11] retourne des bytes (ex: b'1')
-        # → [10] retournerait un int (ex: 49), ce qu’on ne veut pas ici
-        type_byte = exchange[10:11]
+        
+        # On récupère le 1er byte (le type)
+        type_byte = exchange[0:1]
         
         # On transforme les bytes en string ("1")
         type_str = type_byte.decode()
@@ -53,8 +53,8 @@ def get_payload(exchange: bytes) -> bytes:
     """
 
     try:
-        # La charge commence à partir du 11e byte (index 10)
-        payload = exchange[11:]
+        # La charge commence à partir du 2e byte
+        payload = exchange[1:]  # On ignore le premier byte qui est le type
         return payload
     
     except Exception as e:
