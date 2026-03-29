@@ -2,6 +2,7 @@
 # Créez des dictionnaires ou des data classes pour structurer l'instruction
 #
 
+import json
 
 def parse_statement(payload: bytes):
     """
@@ -10,6 +11,7 @@ def parse_statement(payload: bytes):
     :return l'instruction sous forme d'un dictionnaire ou d'un objet
     """
 
+    
 
 #
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
