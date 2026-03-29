@@ -23,6 +23,9 @@ clients_lock = Lock()
 
 def gerer_client(sock_client, addr): # Arguments générés dans le try
 
+    # ------------------------------------------------------------
+    # DIFFIE-HELLMAN
+    # ------------------------------------------------------------
     # Générer les paramètres de la clé publique
     # Envoi de p et g au client
     p, g = security.diffie_hellman_generate_public_parameters(2048)
@@ -38,10 +41,15 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     peer_public_key = int.from_bytes(network.receive_message(sock_client), byteorder='big') # Clé publique du client != clé publ du serveur
     shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, p)
     aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
-    
+
+    # ------------------------------------------------------------
+    # AUTHENTIFICATION
+    # ------------------------------------------------------------ 
     # Premier message = authentification (avant la boucle)
     premier_message = network.receive_message_as_str(sock_client)
     pseudo, password = premier_message.split("|") # Car on l'a mis en forme <pseudo>|<paswd>
+    
+    # Vérification de l'existence de l'utilisateur et du mot de passe
     if not data.user_exists(pseudo):
         hashed_password = security.argon2_hash_password(password)
         data.create_user(pseudo, hashed_password)
@@ -55,22 +63,27 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             return # Permet de ne pas rentrer dans la boucle suivante si le client n'a pas rentré le bon mdp
         logger_server.info(f"Utilisateur authentifié : {pseudo}")
 
+    # ------------------------------------------------------------
+    # GESTION DES MESSAGES RECUS
+    # (RECEPTION, DECHIFFREMENT, RECHIFFREMENT, RENVOI)
+    # ------------------------------------------------------------
     with clients_lock: # Section critique protégée
-        # Ajout du client dans le dictionnaire des clients connectés (contiendra des sockets)
+        # Ajout du client et de sa clé AES dans le dictionnaire des clients connectés (contiendra des sockets + clés AES)
         clients_connectes[addr] = (sock_client, aes_key) # sock_client = connexion faite grâce à addr (ip, port), aes_key = clé de chiffrement symétrique partagée entre le serveur et ce client
     
-    # Connexion avec client
+    # Gestion des messages reçus du client
     while True:
-        message = network.receive_message(sock_client)
+        payload_recu = network.receive_message(sock_client)
         
-        if not message: # Client déconnecté
+        if not payload_recu: # Client déconnecté
             break
         
-        # Déchiffre le message reçu
-        # Récupère le nonce, tage et ciphertext (notre message chiffré)
-        nonce = message[:12]
-        tag = message[12:28]
-        ciphertext = message[28:]
+        # Récupère le nonce, tag et ciphertext (ciphertext = notre message chiffré)
+        # Les tailles du nonce et du tag sont fixes (12 bytes pour le nonce et 16 bytes pour le tag en AES-GCM), donc on peut les découper facilement
+        # Le reste après le tag correspond au ciphertext
+        nonce = payload_recu[:12]
+        tag = payload_recu[12:28]
+        ciphertext = payload_recu[28:]
         
         # Déchiffre le message avec le nonce et le tag
         plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
@@ -85,11 +98,14 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 # Rechiffre le message avec la clé AES de chaque client
                 nonce, cyphertext, tag = security.aes_encrypt(plaindata, client_key)
                 # Préparation du payload
-                payload = nonce + tag + cyphertext
+                payload_renvoi = nonce + tag + cyphertext
 
                 # Renvoi du payload au(x) client(x) (en byte car le payload est en byte)
-                network.send_message(client_sock, payload)
+                network.send_message(client_sock, payload_renvoi)
 
+    # ------------------------------------------------------------
+    # DECONNEXION DU CLIENT
+    # ------------------------------------------------------------
     # Déconnexion du client, on sort de la boucle et on ferme le socket
     with clients_lock:
         del clients_connectes[addr]

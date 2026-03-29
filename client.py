@@ -42,7 +42,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             message_complet = f"{msg.sender_name}|{msg.message}"
             # Encodage du message en byte
             msg_bytes = message_complet.encode('utf-8')
-            # Récupération des retours de la fonction aes_encrypt (tuple contenant nonce, header, cyphertext, tag)
+            # Récupération des retours de la fonction aes_encrypt (tuple contenant nonce, cyphertext, tag)
             nonce, ciphertext, tag = security.aes_encrypt(msg_bytes, aes_key)
             # Préparation du payload (données qu'on veut envoyer), payload est en byte
             payload = nonce + tag + ciphertext
