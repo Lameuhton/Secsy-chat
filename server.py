@@ -97,7 +97,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
 
                 # Rechiffre le message avec la clé AES de chaque client
                 nonce, cyphertext, tag = security.aes_encrypt(plaindata, client_key)
-                # Préparation du payload
+                # Préparation du payload (nonce, tag, ciphertext concaténés)
                 payload_renvoi = nonce + tag + cyphertext
 
                 # Renvoi du payload au(x) client(x) (en byte car le payload est en byte)
