@@ -101,13 +101,27 @@ def execute_seed(connection):
     # TEXT plutot que Varchar car SQLite n'a pas de type de données spécifique pour les chaînes de caractères, il utilise TEXT pour stocker les chaînes de caractères de longueur variable
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            secret TEXT NOT NULL,
+            id VARCHAR(21) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            secret VARCHAR(255) NOT NULL,
             created_at DATETIME NOT NULL,
             last_activity_at DATETIME NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS channel_message (
+            id VARCHAR(21) PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            sender_id VARCHAR(21) NOT NULL,
+            recipient_id VARCHAR(21) NOT NULL,
+            payload_cipher_text TEXT(65535) NOT NULL,
+            payload_cipher_text_size INTEGER NOT NULL,
+            payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
+            integrity_checksum VARCHAR(255) NOT NULL,
+            integrity_signature TEXT(65535) NOT NULL
+        )
+    """)
+
     connection.commit()
 
 

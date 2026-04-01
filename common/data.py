@@ -14,7 +14,7 @@ def user_exists(name: str) -> bool:
     """
     connexion = database.connect_to_db(DB_PATH) # Indique au passage à la fonction qu'on utilise sqlite3 grâce à database
     cursor = connexion.cursor()
-    cursor.execute("SELECT * FROM user WHERE name = ?", (name,)) # Il y a une virgule après name pourqu'il soit considéré comme un tuple (exécute utilise un tuple)
+    cursor.execute("SELECT 1 FROM user WHERE name = ?", (name,)) # Il y a une virgule après name pourqu'il soit considéré comme un tuple (exécute utilise un tuple)
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
     database.close_connection(connexion)
     if not resultat:
@@ -60,8 +60,31 @@ def get_user(name: str) -> tuple:
     connexion = database.connect_to_db(DB_PATH)
     cursor = connexion.cursor()
     cursor.execute("SELECT * FROM user WHERE name = ?", (name,))
-    resultat = cursor.fetchall()
-    database.close_connection(connexion)
+    resultat = cursor.fetchone()
+
+    # Eviter des erreurs ou crashs si jamais ca ne retourne rien
+    if resultat is None:
+        return None
+
+    return resultat
     
-    # [0] car fetchall retourne une liste de tuples (qui normalement chez nous n'en contient qu'un mais pour s'adapter au format de fetchall on doit mettre le 0)
-    return resultat[0]
+def update_user_last_activity(user_id: str):
+    """
+    Met à jour le champ `last_activity_at` d’un utilisateur en base de données
+    avec le timestamp actuel.
+
+    Cette fonction est appelée lorsqu’un utilisateur effectue une action
+    (ex : envoi de message), afin de garder une trace de sa dernière activité.
+
+    :param user_id: identifiant unique de l'utilisateur à mettre à jour
+    """
+
+    now = datetime.now()
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("UPDATE user SET last_activity_at = ? WHERE id = ?", (now, user_id))
+    connexion.commit()
+    database.close_connection(connexion)
+
+
+    
