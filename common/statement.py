@@ -23,26 +23,80 @@ def parse_statement(payload: bytes):
     payload = data.get("payload", {})
     payload_name = payload.get("name")
 
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # Par encore traités pour cette itération car par encore de notion de cannaux et d'intégrité
-    # (mais à uncomment et à rajouter dans le return plus tard )
+    payload_data = payload.get("data", {})
+    
+    match payload_name:
 
-    # payload_data = payload.get("data", {})
-    # payload_data_name = payload_data.get("name")
-    # payload_data_secret = payload_data.get("secret")
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        case "CREATE_CHANNEL":
+            parsed_data = parse_create_channel(payload_data)
+
+        case "DELETE_CHANNEL":
+            parsed_data = parse_delete_channel(payload_data)
+
+        case "GET_LAST_MESSAGES":
+            parsed_data = parse_get_last_messages(payload_data)
+
+        case "JOIN_CHANNEL":
+            parsed_data = parse_join_channel(payload_data)
+
+        case "KICK_CHANNEL_MEMBER":
+            parsed_data = parse_kick_channel_member(payload_data)
+        
+        case "LEAVE_CHANNEL":
+            parsed_data = parse_leave_channel(payload_data)
+            
+        case "UPDATE_USER":
+            parsed_data = parse_update_user(payload_data)
+    
+        case _:
+            parsed_data = payload_data  # fallback safe
 
     return {
         "timestamp": timestamp,
         "payload": {
             "name": payload_name,
-            "data": {
-                "name": "X",
-                "secret": "XXXXXXXXXXXXXXXXXXXXX"
-                }
-            }
+            "data": parsed_data
         }
+    }
 
+def parse_create_channel(data: dict) -> dict:
+    return {
+        "name": data.get("name"),
+        "secret": data.get("secret"),
+    }
+    
+def parse_delete_channel(data: dict) -> dict:
+    return {
+        "name": data.get("name")
+    }
+
+def parse_get_last_messages(data: dict) -> dict:
+    return {
+        "channel_name": data.get("channel_name"),
+        "number": data.get("number")
+    }
+
+def parse_join_channel(data: dict) -> dict:
+    return {
+        "name": data.get("name"),
+        "secret": data.get("secret")
+    }
+
+def parse_kick_channel_member(data: dict) -> dict:
+    return {
+        "channel_name": data.get("channel_name"),
+        "member_name": data.get("member_name")
+    }
+    
+def parse_leave_channel(data: dict) -> dict:
+    return {
+        "name": data.get("channel_name")
+    }
+    
+def parse_update_user(data: dict) -> dict:
+    return {
+        "status": data.get("status"),
+    }
 #
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
 # Ajoutez vos fonctions de parsing également

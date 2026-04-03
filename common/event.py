@@ -23,26 +23,64 @@ def parse_event(payload: bytes):
     payload = data.get("payload", {})
     payload_name = payload.get("name")
 
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # Par encore traités pour cette itération car par encore de notion de cannaux et d'intégrité
-    # (mais à uncomment et à rajouter dans le return plus tard )
+    payload_data = payload.get("data", {})
+    
+    match payload_name:
 
-    # payload_data = payload.get("data", {})
-    # payload_data_id = payload_data.get("id")
-    # payload_data_name = payload_data.get("name")
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        case "CHANNEL_CREATED":
+            parsed_data = parse_channel_created(payload_data)
+
+        case "CHANNEL_JOINED":
+            parsed_data = parse_channel_joined(payload_data)
+
+        case "CHANNEL_DELETED":
+            parsed_data = parse_channel_deleted(payload_data)
+
+        case "USER_UPDATED":
+            parsed_data = parse_user_updated(payload_data)
+
+        case _:
+            parsed_data = payload_data  # fallback safe
 
     return {
         "timestamp": timestamp,
         "payload": {
             "name": payload_name,
-            "data": {
-                "id": "xxxxxxxxxxxxxxxxxxxxx",
-                "name": "X"
-                }
-            }
+            "data": parsed_data
         }
+    }
+  
+def parse_channel_created(data: dict) -> dict:
+    return {
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "public_key": data.get("public_key"),
+        "private_key": data.get("private_key")
+    }
     
+def parse_channel_joined(data: dict) -> dict:
+    return {
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "public_key": data.get("public_key"),
+        "private_key": data.get("private_key")
+    }
+    
+def parse_channel_deleted(data: dict) -> dict:
+    return {
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "member_id": data.get("member_id"),
+        "member_name": data.get("member_name")
+    }
+
+def parse_user_updated(data: dict) -> dict:
+    return {
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "public_key": data.get("public_key"),
+        "status": data.get("status")
+    }
 
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
 # Ajoutez vos fonctions de parsing également

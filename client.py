@@ -2,9 +2,10 @@ import logging
 from queue import Queue, Empty
 from threading import Thread
 import time
-from common import network, security
-from secsychat_tui import SecsyChatTui, TuiMessage
+from common import network, security, exchange
+from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageType
 from getpass import getpass
+import json
 
 # CONFIGURATION DU LOGGER
 logging.basicConfig(
@@ -34,14 +35,38 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # - Sauvegarde dans une base de données
             # etc
             
-
-            #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # Envoi du message après chiffrement vers le serveur
+            # Vérification puis gestion du type de message reçu de la TUI
+            match msg.type:
+                # Simple message
+                case TuiMessageType.MESSAGE:
+                    # Construction du message JSON
+                    message_dict = {
+                        "timestamp": msg.timestamp,
+                        "sender": {
+                            "id": "", # vide car c'est le serveur qui le récupère par après
+                            "name": msg.sender_name,
+                        },
+                        "recipient": {
+                            "type": msg.type,
+                            "id": "xxxxxxxxxxxxxxxxxxxxx",
+                            "name": "X"
+                        },
+                        "payload": {
+                            "cipher_text": msg.message,  # temporaire (pas encore RSA ici)
+                            "cipher_text_size": len(msg.message),
+                            "cipher_text_encrypted_key": "x"
+                        },
+                        "integrity": {
+                            "checksum": "xxx",
+                            "signature": "xxx"
+                        }
+                    }
+        
             
-            # Préparation du message complet à envoyer (pseudo|message)
-            message_complet = f"{msg.sender_name}|{msg.message}"
+            
             # Encodage du message en byte
-            msg_bytes = message_complet.encode('utf-8')
+            msg_bytes = message_dict.encode('utf-8')
+            # Chiffrement du message avant envoi
             # Récupération des retours de la fonction aes_encrypt (tuple contenant nonce, cyphertext, tag)
             nonce, ciphertext, tag = security.aes_encrypt(msg_bytes, aes_key)
             # Préparation du payload (données qu'on veut envoyer), payload est en byte
