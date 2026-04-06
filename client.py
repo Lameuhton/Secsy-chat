@@ -1,11 +1,12 @@
-import logging
 from queue import Queue, Empty
 from threading import Thread
-import time
-from common import network, security, exchange
+from common import network, security, exchange, message, event
 from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageType
 from getpass import getpass
+import logging
+import time
 import json
+
 
 # CONFIGURATION DU LOGGER
 logging.basicConfig(
@@ -20,14 +21,10 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     Traite les messages sortants et les renvoie au serveur.
     """
 
-    logger_client.info("Thread de traitement des messages sortants demarre")
-
     while not q_outbound.is_shutdown:
         try:
             # Récupération d'un message avec timeout de 0.5 seconde
             msg = q_outbound.get(timeout=0.5)
-            # Traitement du message (affichage dans les logs pour l'instant)
-            logger_client.info(f"Message envoyé au serveur:{msg.sender_name}|{msg.message}")
 
             # Ici on ajoutera notre logique de traitement :
             # - Envoi vers un serveur
@@ -35,44 +32,41 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # - Sauvegarde dans une base de données
             # etc
             
-            # Vérification puis gestion du type de message reçu de la TUI
-            match msg.type:
-                # Simple message
-                case TuiMessageType.MESSAGE:
-                    # Construction du message JSON
-                    message_dict = {
-                        "timestamp": msg.timestamp,
-                        "sender": {
-                            "id": "", # vide car c'est le serveur qui le récupère par après
-                            "name": msg.sender_name,
-                        },
-                        "recipient": {
-                            "type": msg.type,
-                            "id": "xxxxxxxxxxxxxxxxxxxxx",
-                            "name": "X"
-                        },
-                        "payload": {
-                            "cipher_text": msg.message,  # temporaire (pas encore RSA ici)
-                            "cipher_text_size": len(msg.message),
-                            "cipher_text_encrypted_key": "x"
-                        },
-                        "integrity": {
-                            "checksum": "xxx",
-                            "signature": "xxx"
-                        }
-                    }
-        
-            
-            
-            # Encodage du message en byte
-            msg_bytes = message_dict.encode('utf-8')
+            # Construction du message JSON
+            message_dict = {
+                "timestamp": msg.timestamp,
+                "sender": {
+                    "id": msg.sender_name, 
+                    "name": msg.sender_name,
+                },
+                "recipient": {
+                    "type": "USER",
+                    "id": "",
+                    "name": ""
+                },
+                "payload": {
+                    "cipher_text": msg.message,
+                    "cipher_text_size": "",
+                    "cipher_text_encrypted_key": ""
+                },
+                "integrity": {
+                    "checksum": "",
+                    "signature": ""
+                }
+            }
+              
+            # Encodage du message en json puis en byte
+            msg_bytes = json.dumps(message_dict).encode('utf-8')
             # Chiffrement du message avant envoi
             # Récupération des retours de la fonction aes_encrypt (tuple contenant nonce, cyphertext, tag)
             nonce, ciphertext, tag = security.aes_encrypt(msg_bytes, aes_key)
             # Préparation du payload (données qu'on veut envoyer), payload est en byte
             payload = nonce + tag + ciphertext
+            # Ajout du type (MESSAGE = 1)
+            type_byte = str(exchange.ExchangeType.MESSAGE.value).encode()
+            final_payload = type_byte + payload
             # Envoi du payload (charge)
-            network.send_message(sock_client, payload)
+            network.send_message(sock_client, final_payload)
 
             # Marquage du message comme traité
             q_outbound.task_done()
@@ -88,43 +82,106 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
 def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
+    :param q_inbound: la queue pour les messages entrants à afficher dans l'interface
+    :param sock_client: la connexion au serveur pour recevoir les messages
+    :param aes_key: la clé AES pour déchiffrer les messages reçus du serveur
     """
 
-    logger_client.info("Thread de traitement des messages entrants demarre")
-
     while not q_inbound.is_shutdown:
-        #try:
+        try:
 
-        # Récupération d'un message du serveur
-        response = network.receive_message(sock_client)
+            # Récupération d'un message du serveur
+            response = network.receive_message(sock_client)
 
-        # Déchiffrement de la réponse
-        # Récupère le nonce, tage et ciphertext (notre message chiffré)
-        nonce = response[:12]
-        tag = response[12:28]
-        ciphertext = response[28:]
+            # Récupère le type et le contenu de l'échange
+            exchange_type = exchange.get_type(response)
+            exchange_content = exchange.get_payload(response)
+            
+            # Déchiffrement du contenu de l'échange
+            # Récupère le nonce, tage et ciphertext (notre message chiffré)
+            nonce = exchange_content[:12]
+            tag = exchange_content[12:28]
+            ciphertext = exchange_content[28:]
+            
+            # Déchiffre avec le nonce et le tag
+            plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
+            
+            # Vérification du type de message reçu
+            if exchange_type == exchange.ExchangeType.MESSAGE:
+                # Parse du message (JSON → dictionnaire Python)
+                parsed_msg = message.parse_message(plaindata)
+                # Construction objet TuiMessage pour affichage dans l'interface
+                tui_msg = TuiMessage(sender_name=parsed_msg["sender"]["name"], message=parsed_msg["payload"]["cipher_text"], timestamp=parsed_msg["timestamp"])
+                logger_client.info(f"Message reçu et affiché: {parsed_msg['sender']['name']} | {parsed_msg['payload']['cipher_text']}")
+            
+            elif exchange_type == exchange.ExchangeType.EVENT:
+                # Parse de l'évènement (JSON → dictionnaire Python)
+                parsed_event = event.parse_event(plaindata)
+                
+                # Vérification du type précis d'évènement et traitement spécifique si besoin
+                # (ex: CHANNEL_CREATED, USER_UPDATED, etc.)
+                if parsed_event["payload"]["name"] == "USER_UPDATED":
+                    # Vérification du status du tiers (actif ou inactif)
+                    if parsed_event["payload"]["data"]["status"] == False:
+                        logger_client.info(f"Utilisateur déconnecté: {parsed_event['payload']['data']['name']}")
+                        # Construction de l'objet TuiMessage
+                        #tui_system_msg = SecsyChatTui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est déconnecté")
+                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DISCONNECTED_USER_EVENT)
+                        # Ajout du message système à la queue
+                        #q_inbound.put(tui_system_msg)
+                    else:
+                        logger_client.info(f"Utilisateur connecté: {parsed_event['payload']['data']['name']}")
+                        # Construction de l'objet TuiMessage
+                        #tui_system_msg = SecsyChatTui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est connecté")
+                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.CONNECTED_USER_EVENT)
+                        # Ajout du message système à la queue
+                        #q_inbound.put(tui_system_msg)
+                
+                # Ajouter plus tard les autres elif pour les autres types d'événements
+                # (ex: CHANNEL_CREATED, CHANNEL_DELETED, etc.)
+
+            else:
+                logger_client.warning(f"Type d'échange inconnu reçu: {exchange_type}")
         
-        # Déchiffre le message avec le nonce et le tag
-        plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
-        
-        # Décode le message en str
-        message = plaindata.decode('utf-8')
-        
-        # Traitement du message (affichage dans les logs pour l'instant)
-        logger_client.info(f"Message recu du serveur: {message}")
+            # Ajout de l'objet tui_msg à la queue inbound pour affichage dans l'interface
+            q_inbound.put(tui_msg)
 
-        # Envoi du message traité vers la queue inbound pour affichage dans l'interface
-        parts = message.split('|', 1)
-        username, content = parts
-        heure = time.time()
-        # On crée l'objet pour la TUI
-        tui_msg = TuiMessage(sender_name=username, message=content,timestamp=heure)
-        q_inbound.put(tui_msg)
-
-        #except Exception as e:
-            #logger_client.error(f"Erreur lors du traitement d'un message entrant: {e}")
+        except Exception as e:
+            logger_client.error(f"Erreur lors du traitement d'un message entrant: {e}")
         
     logger_client.info("Thread de traitement des messages entrants s'arrete")
+
+def send_get_users(sock, aes_key):
+    """
+    Envoie une instruction GET_USERS au serveur pour récupérer la liste des utilisateurs actifs.
+    :param sock: la connexion au serveur
+    :param aes_key: la clé AES pour chiffrer l'instruction avant envoi
+    """
+
+    # Construction de l'instruction
+    request = {
+        "timestamp": int(time.time()),
+        "payload": {
+            "name": "GET_USERS",
+            "data": {}
+        }
+    }
+
+    # JSON → bytes
+    json_bytes = json.dumps(request).encode("utf-8")
+
+    # Chiffrement AES (UNIQUEMENT le JSON)
+    nonce, ciphertext, tag = security.aes_encrypt(json_bytes, aes_key)
+
+    payload = nonce + tag + ciphertext
+
+    # Ajout du type (STATEMENT = 2)
+    type_byte = str(exchange.ExchangeType.STATEMENT.value).encode()
+
+    final_payload = type_byte + payload
+
+    # Envoi
+    network.send_message(sock, final_payload)
 
 
 def main():
@@ -186,6 +243,9 @@ def main():
 
     # Envoi du <pseudonyme>|<mot de passe en clair> au serveur
     network.send_message_as_str(sock_client, f"{pseudo}|{password}") # Sensible au man in the middle mais l'énoncé le demande ainsi
+
+    # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et les afficher dans l'interface    
+    send_get_users(sock_client, aes_key)
 
     # Création et lancement de deux threads permettant de gérer les messages envoyés et reçus
     try:
