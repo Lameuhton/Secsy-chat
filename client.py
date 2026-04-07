@@ -227,19 +227,26 @@ def main():
     # ECHANGE DIFFIE-HELLMAN
     
     # Réception de p et g du serveur
+    logger_client.debug("Attente de réception des paramètres p et g du serveur...")
     p = int.from_bytes(network.receive_message(sock_client), byteorder='big')
     g = int.from_bytes(network.receive_message(sock_client), byteorder='big')
+    logger_client.debug("Paramètres p et g reçus du serveur")
 
     # Recevoir, générer les clés et envoyer au serveur la publique
+    logger_client.debug("Attente de la clé publique du serveur...")
     peer_public_key = int.from_bytes(network.receive_message(sock_client), byteorder='big')
+    logger_client.debug("Clé publique du serveur reçue")
+    logger_client.debug("Génération de la clé privée et publique du client")
     private_key = security.diffie_hellman_generate_private_key(p)
     public_key = security.diffie_hellman_compute_public_key(private_key, p, g)
     network.send_message(sock_client, public_key.to_bytes(256, byteorder='big')) # Car send message envoie en bytes
+    logger_client.debug("Clé publique du client envoyée au serveur")
 
     # Calculer clé partagée et clé AES
+    logger_client.debug("Calcul du secret partagé et dérivation de la clé AES (256 bits)")
     shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, p)
     aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
-
+    logger_client.info("Échange Diffie-Hellman terminé — clé AES établie")
 
     # Envoi du <pseudonyme>|<mot de passe en clair> au serveur
     network.send_message_as_str(sock_client, f"{pseudo}|{password}") # Sensible au man in the middle mais l'énoncé le demande ainsi

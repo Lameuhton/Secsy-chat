@@ -1,5 +1,4 @@
 import json
-
 from common import network, database, data, security, exchange, message, statement
 from threading import Thread, Lock
 import logging
@@ -53,19 +52,28 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     # ------------------------------------------------------------
     # Générer les paramètres de la clé publique
     # Envoi de p et g au client
+    logger_server.debug("Génération des paramètres publics Diffie-Hellman (p, g) - 2048 bits")
     p, g = security.diffie_hellman_generate_public_parameters(2048)
+    logger_server.debug(f"Paramètres générés — envoi de p ({len(p.to_bytes(256, byteorder='big'))} bytes) et g au client {addr}")
     network.send_message(sock_client, p.to_bytes(256, byteorder='big')) # 2048 bits // 8 = 256 bytes
     network.send_message(sock_client, g.to_bytes(8, byteorder='big')) # Presque tjrs 2 ou 5 donc 8 bytes
+    logger_server.debug(f"p et g envoyés à {addr}")
 
     # Générer les clés et envoyer au client la publique
+    logger_server.debug("Génération de la clé privée et publique du serveur")
     private_key = security.diffie_hellman_generate_private_key(p)
     public_key = security.diffie_hellman_compute_public_key(private_key, p, g)
     network.send_message(sock_client, public_key.to_bytes(256, byteorder='big')) # Car send message envoie en bytes
+    logger_server.debug(f"Clé publique du serveur envoyée à {addr}")
 
     # Recevoir clé publ du client et calculer clé partagée + clé AES
+    logger_server.debug(f"Attente de la clé publique du client {addr}...")
     peer_public_key = int.from_bytes(network.receive_message(sock_client), byteorder='big') # Clé publique du client != clé publ du serveur
+    logger_server.debug(f"Clé publique reçue de {addr}")
+    logger_server.debug("Calcul du secret partagé et dérivation de la clé AES (256 bits)")
     shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, p)
     aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
+    logger_server.info(f"Échange Diffie-Hellman terminé avec {addr} — clé AES établie")
 
     # ------------------------------------------------------------
     # AUTHENTIFICATION
