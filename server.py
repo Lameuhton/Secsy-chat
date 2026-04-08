@@ -1,6 +1,6 @@
 import json
-
-from common import network, database, data, security, exchange, message, statement
+import time
+from common import network, database, data, security, exchange, message, statement, event
 from threading import Thread, Lock
 import logging
 
@@ -89,18 +89,28 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         logger_server.info(f"Utilisateur authentifié : {pseudo}")
 
     # ------------------------------------------------------------
-    # GESTION DES MESSAGES RECUS
-    # (RECEPTION, DECHIFFREMENT, RECHIFFREMENT, RENVOI)
+    # AJOUT DU CLIENT AU DICTIONNAIRE DES CLIENTS CONNECTES + ENVOI D'UN EVENEMENT DE CONNEXION A TOUS LES CLIENTS
     # ------------------------------------------------------------
     with clients_lock: # Section critique protégée
         # Ajout du client, de sa clé AES et de son pseudo dans le dictionnaire des clients connectés (contiendra des sockets + clés AES)
         clients_connectes[addr] = (sock_client, aes_key, pseudo) # sock_client = connexion faite grâce à addr (ip, port), aes_key = clé de chiffrement symétrique partagée entre le serveur et ce client
     
-    # Gestion des messages reçus du client
+    # Envoi à tous les clients d'un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter
+    event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True)
+    broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT)
+
+    # ------------------------------------------------------------
+    # GESTION DES MESSAGES RECUS
+    # (RECEPTION, DECHIFFREMENT, RECHIFFREMENT, RENVOI)
+    # ------------------------------------------------------------
     while True:
         response = network.receive_message(sock_client)
         
-        if not response: # Client déconnecté
+        # Client déconnecté
+        if not response:
+            logger_server.info(f"{pseudo} déconnecté brutalement")
+            event_payload = event.build_user_updated(time.time(), pseudo, pseudo, False)
+            broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT)
             break
         
         # Récupère le type et le contenu de l'échange
@@ -141,18 +151,8 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 # Le serveur envoie à l'émetteur un événement USER_UPDATED pour chaque client connecté dans le dictionnaire
                 with clients_lock:
                     for addr, (client_sock, client_key, pseudo) in clients_connectes.items():
-                        event_payload = {
-                            "timestamp": parsed_statement["timestamp"],
-                            "payload": {
-                                "name": "USER_UPDATED",
-                                "data": {
-                                    "id": pseudo, # Id de l'utilisateur (peut être laissé à None si pas pertinent)
-                                    "name": pseudo,
-                                    "public_key": "",
-                                    "status": True # Renvoie les utilisateurs connectés, donc True
-                                }
-                            }
-                        }
+
+                        event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True) 
                         # Chiffrement de l'événement avec la clé AES du client
                         nonce, cyphertext, tag = security.aes_encrypt(json.dumps(event_payload).encode('utf-8'), aes_key)
                         payload_renvoi = nonce + tag + cyphertext
@@ -166,6 +166,9 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 # Vérifie le status dans parsed_statement (True = connecté, False = déconnecté)
                 # et met à jour le dictionnaire des clients connectés en conséquence
                 
+                # Récupère le pseudo du client qui a envoyé l'instruction UPDATE_USER depuis le dictionnaire des clients connectés grâce à son adresse (addr)
+                pseudo = clients_connectes[addr][2] 
+
                 # Ajoute le client au dictionnaire des clients connectés si status = True
                 if parsed_statement["payload"]["data"]["status"] == True:
                     with clients_lock:
@@ -176,18 +179,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                         del clients_connectes[addr]
                 
                 # Renvoie à tous les clients un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter ou de se déconnecter
-                event_payload = {
-                    "timestamp": parsed_statement["timestamp"],
-                    "payload": {
-                        "name": "USER_UPDATED",
-                        "data": {
-                            "id": pseudo,
-                            "name": pseudo,
-                            "public_key": "",
-                            "status": parsed_statement["payload"]["data"]["status"]
-                        }
-                    }
-                }
+                event_payload = event.build_user_updated(parsed_statement["timestamp"], pseudo, pseudo, parsed_statement["payload"]["data"]["status"])
                 broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT)
 
     # ------------------------------------------------------------

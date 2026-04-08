@@ -3,7 +3,7 @@
 #
 
 import json
-
+import time
 def parse_statement(payload: bytes):
     """
     Lit et transforme la charge en instruction
@@ -96,6 +96,39 @@ def parse_leave_channel(data: dict) -> dict:
 def parse_update_user(data: dict) -> dict:
     return {
         "status": data.get("status"),
+    }
+
+def build_update_user(status: bool) -> dict:
+    """
+    Construit une instruction UPDATE_USER standardisée.
+    
+    :param status: True (connecté) / False (déconnecté)
+    :return: dictionnaire de l'instruction
+    """
+
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "UPDATE_USER",
+            "data": {
+                "status": status
+            }
+        }
+    }
+
+def build_get_users() -> dict:
+    """
+    Construit une instruction GET_USERS standardisée.
+    
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "GET_USERS",
+            "data": {}
+        }
     }
 #
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles

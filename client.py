@@ -1,6 +1,6 @@
 from queue import Queue, Empty
 from threading import Thread
-from common import network, security, exchange, message, event
+from common import network, security, exchange, message, event, statement
 from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageType
 from getpass import getpass
 import logging
@@ -55,21 +55,11 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                 }
             }
               
-            # Encodage du message en json puis en byte
-            msg_bytes = json.dumps(message_dict).encode('utf-8')
-            # Chiffrement du message avant envoi
-            # Récupération des retours de la fonction aes_encrypt (tuple contenant nonce, cyphertext, tag)
-            nonce, ciphertext, tag = security.aes_encrypt(msg_bytes, aes_key)
-            # Préparation du payload (données qu'on veut envoyer), payload est en byte
-            payload = nonce + tag + ciphertext
-            # Ajout du type (MESSAGE = 1)
-            type_byte = str(exchange.ExchangeType.MESSAGE.value).encode()
-            final_payload = type_byte + payload
-            # Envoi du payload (charge)
-            network.send_message(sock_client, final_payload)
+            send_to_server(sock_client, aes_key, message_dict, exchange.ExchangeType.MESSAGE)
 
             # Marquage du message comme traité
             q_outbound.task_done()
+
         except Empty:
             # Timeout atteint, on reboucle pour vérifier is_shutdown
             continue
@@ -79,7 +69,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
 
-def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes):
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
     :param q_inbound: la queue pour les messages entrants à afficher dans l'interface
@@ -125,17 +115,23 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     if parsed_event["payload"]["data"]["status"] == False:
                         logger_client.info(f"Utilisateur déconnecté: {parsed_event['payload']['data']['name']}")
                         # Construction de l'objet TuiMessage
-                        #tui_system_msg = SecsyChatTui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est déconnecté")
                         tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DISCONNECTED_USER_EVENT)
-                        # Ajout du message système à la queue
-                        #q_inbound.put(tui_system_msg)
+                        # Ajout du message à la queue
+                        q_inbound.put(tui_msg)
                     else:
                         logger_client.info(f"Utilisateur connecté: {parsed_event['payload']['data']['name']}")
-                        # Construction de l'objet TuiMessage
-                        #tui_system_msg = SecsyChatTui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est connecté")
+                        # Construction de l'objet TuiMessage        
                         tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.CONNECTED_USER_EVENT)
-                        # Ajout du message système à la queue
-                        #q_inbound.put(tui_system_msg)
+                        # Ajout du message à la queue
+                        q_inbound.put(tui_msg)
+
+                    # Pour éviter d'afficher une notification de connexion/déconnexion pour soi-même
+                    if parsed_event["payload"]["data"]["name"] != tui.user_name:
+                        if parsed_event["payload"]["data"]["status"]:
+                            tui_system_msg = tui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est connecté")
+                        else:
+                            tui_system_msg = tui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est déconnecté")
+                        q_inbound.put(tui_system_msg)
                 
                 # Ajouter plus tard les autres elif pour les autres types d'événements
                 # (ex: CHANNEL_CREATED, CHANNEL_DELETED, etc.)
@@ -151,37 +147,32 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
         
     logger_client.info("Thread de traitement des messages entrants s'arrete")
 
-def send_get_users(sock, aes_key):
+def send_to_server(sock, aes_key, data_dict: dict, exchange_type: exchange.ExchangeType):
     """
-    Envoie une instruction GET_USERS au serveur pour récupérer la liste des utilisateurs actifs.
-    :param sock: la connexion au serveur
-    :param aes_key: la clé AES pour chiffrer l'instruction avant envoi
+    Envoie un échange au serveur, en chiffrant les données et en ajoutant le type d'échange.
+
+    :param sock: socket client
+    :param aes_key: clé AES partagée
+    :param data_dict: dictionnaire à envoyer (message, event, statement)
+    :param exchange_type: type d'échange (MESSAGE, EVENT, STATEMENT)
     """
+    try:
+        # JSON → bytes
+        json_bytes = json.dumps(data_dict).encode("utf-8")
+        # Chiffrement AES
+        nonce, ciphertext, tag = security.aes_encrypt(json_bytes, aes_key)
+        # Construction du payload (nonce + tag + ciphertext)
+        payload = nonce + tag + ciphertext
+        # Ajout du type (IMPORTANT : .value)
+        type_byte = str(exchange_type.value).encode()
+        # Construction payload final (type + payload)
+        final_payload = type_byte + payload
 
-    # Construction de l'instruction
-    request = {
-        "timestamp": int(time.time()),
-        "payload": {
-            "name": "GET_USERS",
-            "data": {}
-        }
-    }
+        # Envoi au serveur
+        network.send_message(sock, final_payload)
 
-    # JSON → bytes
-    json_bytes = json.dumps(request).encode("utf-8")
-
-    # Chiffrement AES (UNIQUEMENT le JSON)
-    nonce, ciphertext, tag = security.aes_encrypt(json_bytes, aes_key)
-
-    payload = nonce + tag + ciphertext
-
-    # Ajout du type (STATEMENT = 2)
-    type_byte = str(exchange.ExchangeType.STATEMENT.value).encode()
-
-    final_payload = type_byte + payload
-
-    # Envoi
-    network.send_message(sock, final_payload)
+    except Exception as e:
+        logger_client.error(f"Erreur lors de l'envoi au serveur: {e}", exc_info=True)
 
 
 def main():
@@ -245,7 +236,8 @@ def main():
     network.send_message_as_str(sock_client, f"{pseudo}|{password}") # Sensible au man in the middle mais l'énoncé le demande ainsi
 
     # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et les afficher dans l'interface    
-    send_get_users(sock_client, aes_key)
+    get_users_statement = statement.build_get_users()
+    send_to_server(sock_client, aes_key, get_users_statement, exchange.ExchangeType.STATEMENT)
 
     # Création et lancement de deux threads permettant de gérer les messages envoyés et reçus
     try:
@@ -270,7 +262,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client, aes_key),
+            args=(q_inbound, sock_client, aes_key, tui),
             daemon=True,
         )
         inbound_thread.start()
@@ -283,6 +275,10 @@ def main():
     # Exécution de l'interface de chat (TUI)
     tui.run()
     logger_client.info("Lancement de l'interface")
+
+    # Envoi d'une instruction UPDATE_USER pour signaler au serveur que ce client est inactif (s'est déconnecté)
+    update_user_statement = statement.build_update_user(False) 
+    send_to_server(sock_client, aes_key, update_user_statement, exchange.ExchangeType.STATEMENT)
 
     # Mise en arrêt des queues pour les messages reçus à afficher et les messages envoyés depuis l'interface
     if not q_inbound.is_shutdown:

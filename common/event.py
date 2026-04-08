@@ -3,6 +3,7 @@
 #
 
 import json
+import time
 
 def parse_event(payload: bytes):
     """
@@ -11,11 +12,8 @@ def parse_event(payload: bytes):
     :return l'évènement sous forme d'un dictionnaire ou d'un objet
     """
 
-    # Décodage bytes → string
-    json_str = payload.decode('utf-8')
-
-    # Parsing JSON → dictionnaire Python
-    data = json.loads(json_str)
+    # Décodage bytes → Parsing JSON → dictionnaire Python
+    data = json.loads(payload.decode("utf-8"))
 
     # Extraction des informations importantes
 
@@ -25,22 +23,15 @@ def parse_event(payload: bytes):
 
     payload_data = payload.get("data", {})
     
-    match payload_name:
+    if payload_name in ("CHANNEL_CREATED", "CHANNEL_JOINED"):
+        parsed_data = parse_channel_created_joined(payload_data)
 
-        case "CHANNEL_CREATED":
-            parsed_data = parse_channel_created(payload_data)
+    elif payload_name == "CHANNEL_DELETED":
+        parsed_data = parse_channel_deleted(payload_data)
 
-        case "CHANNEL_JOINED":
-            parsed_data = parse_channel_joined(payload_data)
+    elif payload_name == "USER_UPDATED":
+        parsed_data = parse_user_updated(payload_data)
 
-        case "CHANNEL_DELETED":
-            parsed_data = parse_channel_deleted(payload_data)
-
-        case "USER_UPDATED":
-            parsed_data = parse_user_updated(payload_data)
-
-        case _:
-            parsed_data = payload_data  # fallback safe
 
     return {
         "timestamp": timestamp,
@@ -50,22 +41,14 @@ def parse_event(payload: bytes):
         }
     }
   
-def parse_channel_created(data: dict) -> dict:
+def parse_channel_created_joined(data: dict) -> dict:
     return {
         "id": data.get("id"),
         "name": data.get("name"),
         "public_key": data.get("public_key"),
         "private_key": data.get("private_key")
     }
-    
-def parse_channel_joined(data: dict) -> dict:
-    return {
-        "id": data.get("id"),
-        "name": data.get("name"),
-        "public_key": data.get("public_key"),
-        "private_key": data.get("private_key")
-    }
-    
+
 def parse_channel_deleted(data: dict) -> dict:
     return {
         "id": data.get("id"),
@@ -80,6 +63,30 @@ def parse_user_updated(data: dict) -> dict:
         "name": data.get("name"),
         "public_key": data.get("public_key"),
         "status": data.get("status")
+    }
+
+def build_user_updated(timestamp: float, user_id: str, name: str, status: bool) -> dict:
+    """
+    Construit un événement USER_UPDATED standardisé.
+    
+    :param timestamp: timestamp de l'événement
+    :param user_id: identifiant du user
+    :param name: pseudo du user
+    :param status: True (connecté) / False (déconnecté)
+    :return: dictionnaire de l'événement
+    """
+    
+    return {
+        "timestamp": timestamp,
+        "payload": {
+            "name": "USER_UPDATED",
+            "data": {
+                "id": user_id,
+                "name": name,
+                "public_key": "",
+                "status": status
+            }
+        }
     }
 
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
