@@ -1,7 +1,7 @@
 from queue import Queue, Empty
 from threading import Thread
 from common import network, security, exchange, message, event, statement
-from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageType
+from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageSenderType, TuiMessageType
 from getpass import getpass
 import logging
 import time
@@ -109,7 +109,8 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                 parsed_event = event.parse_event(plaindata)
                 
                 # Vérification du type précis d'évènement et traitement spécifique si besoin
-                # (ex: CHANNEL_CREATED, USER_UPDATED, etc.)
+
+                # Si un utilisateur a été mis à jour
                 if parsed_event["payload"]["name"] == "USER_UPDATED":
                     # Vérification du status du tiers (actif ou inactif)
                     if parsed_event["payload"]["data"]["status"] == False:
@@ -132,9 +133,50 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                         else:
                             tui_system_msg = tui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est déconnecté")
                         q_inbound.put(tui_system_msg)
-                
-                # Ajouter plus tard les autres elif pour les autres types d'événements
-                # (ex: CHANNEL_CREATED, CHANNEL_DELETED, etc.)
+
+                # Si un canal a été créé ou rejoint
+                if parsed_event["payload"]["name"] in ["CHANNEL_CREATED", "CHANNEL_JOINED"]:
+                    
+                    # Si le canal n'apparaissait pas dans la liste des canaux, il doit dorénavant y apparaitre
+                    if parsed_event["payload"]["data"]["name"] not in tui.channels:
+                        # Construction de l'objet TuiMessage
+                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.NEW_CHANNEL_EVENT)
+                        q_inbound.put(tui_msg)
+
+                    # Affichage d'une notification spécifique selon que le canal a été créé ou rejoint
+                    if parsed_event["payload"]["data"]["name"] == "CHANNEL_CREATED":
+                        logger_client.info(f"Nouveau canal créé: {parsed_event['payload']['data']['name']}")
+                        tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Le canal {parsed_event['payload']['data']['name']} a été créé", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                        q_inbound.put(tui_channel_msg)
+                    else:
+                        logger_client.info(f"{tui.user_name} - Canal rejoint: {parsed_event['payload']['data']['name']}")
+                        tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Vous avez rejoint le canal {parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                        q_inbound.put(tui_channel_msg)
+
+                # Si un canal a été supprimé ou si un membre à été kick d'un canal
+                if parsed_event["payload"]["name"] == "CHANNEL_DELETED":
+                    # A faire plus tard: Adapter le contexte s'il pointait sur le cannal supprimé
+
+                    # Vérification si un id et name sont présents dans data (user kick)
+                    if parsed_event["payload"]["data"]["id"] and parsed_event["payload"]["data"]["name"]:
+                        # Vérification si le membre éjecté est soi-même ou un autre membre du canal
+                        if parsed_event["payload"]["data"]["member_id"] == tui.user_name:
+                            tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DELETED_CHANNEL_EVENT)
+                            q_inbound.put(tui_msg)
+                            # Plus tard - Changement de contexte
+                            tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Vous avez été éjecté du canal {parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                            q_inbound.put(tui_channel_msg)
+                        else:
+                            logger_client.info(f"{parsed_event['payload']['data']['member_name']} a été éjecté du canal {parsed_event['payload']['data']['name']}")
+                            tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Le membre {parsed_event['payload']['data']['member_name']} a été éjecté du canal {parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                            q_inbound.put(tui_channel_msg)
+
+                    else:
+                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DELETED_CHANNEL_EVENT)
+                        q_inbound.put(tui_msg)
+                        # Plus tard - Changement de contexte
+                        tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Le canal {parsed_event['payload']['data']['name'] } a été supprimé", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                        q_inbound.put(tui_channel_msg)
 
             else:
                 logger_client.warning(f"Type d'échange inconnu reçu: {exchange_type}")
