@@ -65,7 +65,7 @@ def parse_user_updated(data: dict) -> dict:
         "status": data.get("status")
     }
 
-def build_user_updated(timestamp: float, user_id: str, name: str, status: bool) -> dict:
+def build_user_updated(timestamp: float, user_id: str, name: str, status: bool, public_key: str) -> dict:
     """
     Construit un événement USER_UPDATED standardisé.
     
@@ -83,7 +83,7 @@ def build_user_updated(timestamp: float, user_id: str, name: str, status: bool) 
             "data": {
                 "id": user_id,
                 "name": name,
-                "public_key": "",
+                "public_key": public_key.hex(),
                 "status": status
             }
         }

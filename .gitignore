@@ -14,3 +14,6 @@ app_server.log
 app_client.log
 
 database.db
+
+# Dossiers de clés RSA
+keys/

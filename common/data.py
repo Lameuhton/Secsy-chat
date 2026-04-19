@@ -22,17 +22,18 @@ def user_exists(name: str) -> bool:
     else:
         return True
 
-def create_user(name: str, hashed_password):
+def create_user(name: str, hashed_password, public_key: str):
     '''
     Crée un tilisateur avec le pseudo et le mot de passe précédemment hashé et l'encode dans la base de donnée.
     :param name: le nom de l'utilisateur (pseudonyme)
     :param hashed_password: mot de passe précédemment hashé
+    :param public_key: clé publique de l'utilisateur
     '''
 
     id = generate()
     now = datetime.now()
     connexion = database.connect_to_db(DB_PATH)
-    database.insert_data(connexion,"user", ("id", "name", "secret", "created_at", "last_activity_at"), (id, name, hashed_password, now, now))
+    database.insert_data(connexion,"user", ("id", "name", "secret", "public_key", "created_at", "last_activity_at"), (id, name, hashed_password, public_key, now, now))
     database.close_connection(connexion)
 
 
@@ -52,6 +53,7 @@ def get_user(name: str) -> tuple:
                 id,
                 name,
                 secret,             #mot de passe hashé
+                public_key,
                 created_at,
                 last_activity_at
              )
@@ -85,6 +87,7 @@ def update_user_last_activity(user_id: str):
     cursor.execute("UPDATE user SET last_activity_at = ? WHERE id = ?", (now, user_id))
     connexion.commit()
     database.close_connection(connexion)
+
 
 
 def add_message(message: dict):

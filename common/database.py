@@ -104,6 +104,7 @@ def execute_seed(connection):
             id VARCHAR(21) PRIMARY KEY,
             name VARCHAR(255) NOT NULL UNIQUE,
             secret VARCHAR(255) NOT NULL,
+            public_key TEXT(65535) NOT NULL,
             created_at DATETIME NOT NULL,
             last_activity_at DATETIME NOT NULL
         )

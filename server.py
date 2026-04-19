@@ -83,10 +83,12 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     premier_message = network.receive_message_as_str(sock_client)
     pseudo, password = premier_message.split("|") # Car on l'a mis en forme <pseudo>|<paswd>
     
+    public_key = network.receive_message(sock_client)
+    
     # Vérification de l'existence de l'utilisateur et du mot de passe
     if not data.user_exists(pseudo):
         hashed_password = security.argon2_hash_password(password)
-        data.create_user(pseudo, hashed_password)
+        data.create_user(pseudo, hashed_password, public_key.decode('utf-8'))
         logger_server.info(f"Nouvel utilisateur créé : {pseudo}")
     else:
         user = data.get_user(pseudo)
@@ -97,6 +99,11 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             return # Permet de ne pas rentrer dans la boucle suivante si le client n'a pas rentré le bon mdp
         logger_server.info(f"Utilisateur authentifié : {pseudo}")
 
+    # ------------------------------------------------------------
+    # GESTION CLE RSA
+    # ------------------------------------------------------------
+     
+    
     # ------------------------------------------------------------
     # AJOUT DU CLIENT AU DICTIONNAIRE DES CLIENTS CONNECTES + ENVOI D'UN EVENEMENT DE CONNEXION A TOUS LES CLIENTS
     # ------------------------------------------------------------
@@ -161,7 +168,9 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 with clients_lock:
                     for addr, (client_sock, client_key, pseudo) in clients_connectes.items():
 
-                        event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True) 
+                        user = data.get_user(pseudo)
+                        public_key = user[3] # Car user = (id, name, secret, public_key, created_at, last_activity_at)
+                        event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True, public_key)
                         # Chiffrement de l'événement avec la clé AES du client
                         nonce, cyphertext, tag = security.aes_encrypt(json.dumps(event_payload).encode('utf-8'), aes_key)
                         payload_renvoi = nonce + tag + cyphertext

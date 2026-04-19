@@ -4,8 +4,13 @@ from common import network, security, exchange, message, event, statement
 from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageSenderType, TuiMessageType
 from getpass import getpass
 import logging
-import time
 import json
+import os
+
+# Chemins pour les clés RSA
+KEYS_DIR = "keys"
+PRIVATE_KEY_PATH = os.path.join(KEYS_DIR, "private.pem")
+PUBLIC_KEY_PATH = os.path.join(KEYS_DIR, "public.pem")
 
 
 # CONFIGURATION DU LOGGER
@@ -16,7 +21,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, public_keys: dict):
     """
     Traite les messages sortants et les renvoie au serveur.
     """
@@ -32,6 +37,20 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # - Sauvegarde dans une base de données
             # etc
             
+            message_str = msg.message
+            # Convertit le message en bytes pour le chiffrer
+            plaintext = message_str.encode("utf-8")
+            cipher_text_size = len(plaintext)
+            
+            chacha_key = security.chacha_generate_key()
+            nonce, ciphertext_with_tag = security.chacha_encrypt(plaintext, chacha_key)
+            full_ciphertext = nonce + ciphertext_with_tag
+            
+            recipient_public_key = public_keys.get(msg.recipient_name)
+            # Chiffrement de la clé symétrique ChaCha avec la clé publique du destinataire (RSA)
+            encrypted_key = security.rsa_encrypt(chacha_key, recipient_public_key)
+
+                
             # Construction du message JSON
             message_dict = {
                 "timestamp": msg.timestamp,
@@ -40,14 +59,14 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                     "name": msg.sender_name,
                 },
                 "recipient": {
-                    "type": "USER",
+                    "type": msg.sender_type, # On peut faire ça car sender_type est un Enum
                     "id": "",
                     "name": ""
                 },
                 "payload": {
-                    "cipher_text": msg.message,
-                    "cipher_text_size": "",
-                    "cipher_text_encrypted_key": ""
+                    "cipher_text": full_ciphertext.hex(),  # On convertit en hex pour que ce soit du texte et pas des bytes
+                    "cipher_text_size": cipher_text_size,
+                    "cipher_text_encrypted_key": encrypted_key.hex()
                 },
                 "integrity": {
                     "checksum": "",
@@ -56,9 +75,6 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             }
               
             send_to_server(sock_client, aes_key, message_dict, exchange.ExchangeType.MESSAGE)
-
-            # Marquage du message comme traité
-            q_outbound.task_done()
 
         except Empty:
             # Timeout atteint, on reboucle pour vérifier is_shutdown
@@ -69,7 +85,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
 
-def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui):
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, public_keys: dict):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
     :param q_inbound: la queue pour les messages entrants à afficher dans l'interface
@@ -100,9 +116,22 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
             if exchange_type == exchange.ExchangeType.MESSAGE:
                 # Parse du message (JSON → dictionnaire Python)
                 parsed_msg = message.parse_message(plaindata)
+                # Récupération du payload chiffré et de la clé chiffrée
+                payload = parsed_msg["payload"]
+                full_ciphertext = bytes.fromhex(payload["cipher_text"])
+                encrypted_key = bytes.fromhex(payload["cipher_text_encrypted_key"])
+                # Séparer nonce et ciphertext+tag
+                nonce = full_ciphertext[:12]
+                ciphertext_with_tag = full_ciphertext[12:]
+                # Déchiffrer la clé symétrique ChaCha avec la clé privée du client (RSA)
+                chacha_key = security.rsa_decrypt(encrypted_key, private_key)
+                # Déchiffrer le message avec la clé symétrique ChaCha
+                plaintext = security.chacha_decrypt(ciphertext_with_tag, chacha_key, nonce)
+                # Convertir le plaintext en string pour l'afficher
+                message_str = plaintext.decode("utf-8")
                 # Construction objet TuiMessage pour affichage dans l'interface
-                tui_msg = TuiMessage(sender_name=parsed_msg["sender"]["name"], message=parsed_msg["payload"]["cipher_text"], timestamp=parsed_msg["timestamp"])
-                logger_client.info(f"Message reçu et affiché: {parsed_msg['sender']['name']} | {parsed_msg['payload']['cipher_text']}")
+                tui_msg = TuiMessage(sender_name=parsed_msg["sender"]["name"], message=message_str, timestamp=parsed_msg["timestamp"])
+                logger_client.info(f"Message reçu et affiché: {parsed_msg['sender']['name']} | {message_str}")
             
             elif exchange_type == exchange.ExchangeType.EVENT:
                 # Parse de l'évènement (JSON → dictionnaire Python)
@@ -112,6 +141,13 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
 
                 # Si un utilisateur a été mis à jour
                 if parsed_event["payload"]["name"] == "USER_UPDATED":
+                    # Stockage de la clé publique de l'utilisateur dans le dictionnaire
+                    name = parsed_event["payload"]["data"]["name"]
+                    public_key_hex = parsed_event["payload"]["data"].get("public_key")
+
+                    if public_key_hex:
+                        public_keys[name] = bytes.fromhex(public_key_hex)
+                        
                     # Vérification du status du tiers (actif ou inactif)
                     if parsed_event["payload"]["data"]["status"] == False:
                         logger_client.info(f"Utilisateur déconnecté: {parsed_event['payload']['data']['name']}")
@@ -216,6 +252,7 @@ def send_to_server(sock, aes_key, data_dict: dict, exchange_type: exchange.Excha
 
 
 def main():
+
     logger_client.info("Demarrage de l'application")
 
     pseudo = input("Entrez votre pseudo: ")
@@ -224,6 +261,8 @@ def main():
 
     password = getpass("Entrez votre mot de passe: ") # Pas de input pour pas qu'il soit marqué en "clair" dans l'interface utilisateur (on est en sécu quand-même...)
 
+    # Initialisation du dictionnaire pour stocker les clés publiques des autres utilisateurs (pour chiffrer les messages qu'on leur envoie)
+    public_keys = {}
     # Initialisation de la queue pour les messages reçus à afficher dans l'interface
     try:
         q_inbound = Queue[TuiMessage]()
@@ -254,8 +293,9 @@ def main():
         logger_client.error(f"Erreur lors de la connexion au serveur: {e}")
         return # Arrêt du programme si la connexion au serveur échoue
 
-    
+    # -----------------------------------------------------------------
     # ECHANGE DIFFIE-HELLMAN
+    # -----------------------------------------------------------------
     
     # Réception de p et g du serveur
     logger_client.debug("Attente de réception des paramètres p et g du serveur...")
@@ -279,9 +319,43 @@ def main():
     aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
     logger_client.info("Échange Diffie-Hellman terminé — clé AES établie")
 
+    # -----------------------------------------------------------------
+    # AUTHENTIFICATION
+    # -----------------------------------------------------------------
+    
     # Envoi du <pseudonyme>|<mot de passe en clair> au serveur
     network.send_message_as_str(sock_client, f"{pseudo}|{password}") # Sensible au man in the middle mais l'énoncé le demande ainsi
 
+    # -----------------------------------------------------------------
+    # GENERATION RSA
+    # -----------------------------------------------------------------
+    
+    # Crée le dossier des clés s'il n'existe pas
+    os.makedirs(KEYS_DIR, exist_ok=True)
+    
+    # Si les clés existent → on les charge
+    if os.path.exists(PRIVATE_KEY_PATH) and os.path.exists(PUBLIC_KEY_PATH):
+        with open(PRIVATE_KEY_PATH, "rb") as f:
+            private_key = f.read()
+
+        with open(PUBLIC_KEY_PATH, "rb") as f:
+            public_key = f.read()
+    # Sinon → on les génère et on les sauvegarde pour les réutiliser lors de la prochaine connexion
+    else:
+        # Génération des clés
+        private_key, public_key = security.rsa_generate_keypair()
+
+        # Sauvegarde
+        with open(PRIVATE_KEY_PATH, "wb") as f:
+            f.write(private_key)
+
+        with open(PUBLIC_KEY_PATH, "wb") as f:
+            f.write(public_key)
+            
+    # Envoi de la clé publique au serveur pour qu'il puisse l'utiliser pour chiffrer les messages destinés à ce client
+    network.send_message(sock_client, public_key)
+    
+    
     # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et les afficher dans l'interface    
     get_users_statement = statement.build_get_users()
     send_to_server(sock_client, aes_key, get_users_statement, exchange.ExchangeType.STATEMENT)
@@ -296,7 +370,7 @@ def main():
         outbound_thread = Thread(
             target=handle_outbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants et aes
-            args=(q_outbound, sock_client, aes_key),
+            args=(q_outbound, sock_client, aes_key, public_keys),
             daemon=True,
         )
         outbound_thread.start()
@@ -309,7 +383,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client, aes_key, tui),
+            args=(q_inbound, sock_client, aes_key, tui, private_key, public_keys),
             daemon=True,
         )
         inbound_thread.start()

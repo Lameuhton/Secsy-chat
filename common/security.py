@@ -220,12 +220,12 @@ def chacha_generate_key() -> bytes:
     """
     return ChaCha20Poly1305.generate_key()
 
-def chacha_encrypt(plaintext: bytes, key: bytes) -> tuple[bytes, bytes, bytes]:
+def chacha_encrypt(plaintext: bytes, key: bytes) -> tuple[bytes, bytes]:
     """
     Chiffre des données avec ChaCha20-Poly1305
     :param plaintext: données à chiffrer
     :param key: clé symétrique (32 bytes)
-    :return: tuple (nonce, ciphertext, tag)
+    :return: tuple (nonce, ciphertext+tag)
     """
     chacha = ChaCha20Poly1305(key)
 
@@ -234,24 +234,17 @@ def chacha_encrypt(plaintext: bytes, key: bytes) -> tuple[bytes, bytes, bytes]:
 
     ciphertext_with_tag = chacha.encrypt(nonce, plaintext, None)
 
-    # séparation ciphertext / tag (tag = 16 derniers bytes)
-    ciphertext = ciphertext_with_tag[:-16]
-    tag = ciphertext_with_tag[-16:]
+    return nonce, ciphertext_with_tag
 
-    return nonce, ciphertext, tag
-
-def chacha_decrypt(ciphertext: bytes, key: bytes, nonce: bytes, tag: bytes) -> bytes:
+def chacha_decrypt(ciphertext_with_tag: bytes, key: bytes, nonce: bytes) -> bytes:
     """
     Déchiffre des données avec ChaCha20-Poly1305
 
-    :param ciphertext: données chiffrées
+    :param ciphertext_with_tag: données chiffrées avec tag
     :param key: clé symétrique (32 bytes)
     :param nonce: nonce utilisé lors du chiffrement
-    :param tag: tag d'intégrité (16 bytes)
     :return: plaintext déchiffré
     """
     chacha = ChaCha20Poly1305(key)
-
-    ciphertext_with_tag = ciphertext + tag
 
     return chacha.decrypt(nonce, ciphertext_with_tag, None)
