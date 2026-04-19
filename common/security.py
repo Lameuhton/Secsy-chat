@@ -1,11 +1,14 @@
 from typing import Tuple
-from cryptography.hazmat.primitives.asymmetric import dh
 import secrets
-from Crypto.Cipher import AES
 import os
 from argon2 import PasswordHasher
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+from Crypto.Cipher import AES
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
 import logging
 
 # Initialisation du passwordhasher
@@ -53,7 +56,7 @@ def aes_encrypt(plain_data: bytes, key: bytes) -> Tuple:
     Chiffre des données à l'aide d'AES-GCM          #Chiffrement symétrique, même clef pour chiffrer que déchiffrer       #AES-GCM car rapide et fiable (moins d'erreur)
     :param plain_data: les données en clair à chiffrer
     :param key: la clé de chiffrement
-    :return: le tuple contenant les éléments nécessaires au déchiffrement (nonce, header, ciphertext, tag)
+    :return: le tuple contenant les éléments nécessaires au déchiffrement (nonce, ciphertext, tag)
     """
     # nonce : recommandé à 96 bits, nombre aléatoire à usage unique, évite la détection de patterns --> comme le salt mais n'est jamais le même
     # header : métadonnées en clair, vérifiées mais non chiffrées lors du déchiffrement
@@ -88,6 +91,7 @@ def aes_decrypt(encrypted_data: bytes, key: bytes, decryption_data: Tuple) -> by
         return plain_data
     except ValueError as e:
         logger.error(f"Erreur de déchiffrement : {e}", exc_info=True)
+        raise
 
 def diffie_hellman_generate_public_parameters(bits: int) -> Tuple[int, int]:
     """
@@ -168,3 +172,86 @@ def diffie_hellman_derive_shared_key(shared_secret: int, key_length: int) -> byt
         salt=None,
     )
     return hkdf.derive(secret_bytes)
+
+def rsa_generate_keypair() -> Tuple[bytes, bytes]:
+    """
+    Génère une paire de clés RSA (privée, publique)
+    :return: un tuple (clé privée, clé publique) en bytes
+    """
+    # RSA.generate(2048) génère une paire de clés RSA de 2048 bits
+    # (ce qui est considéré comme sécurisé pour la plupart des usages actuels)
+    keys = RSA.generate(2048)
+    # On exporte les clés au format PEM (bytes) pour les stocker ou les transmettre facilement
+    private_key = keys.export_key()
+    public_key = keys.publickey().export_key()
+    return private_key, public_key
+
+def rsa_encrypt(plain_data: bytes, public_key: bytes) -> bytes:
+    """
+    Chiffre des données à l'aide de la clé publique RSA
+    :param plain_data: les données en clair à chiffrer
+    :param public_key: la clé publique RSA pour le chiffrement
+    :return: les données chiffrées en bytes
+    """
+    # On importe la clé publique pour créer un objet RSA utilisable
+    rsa_key = RSA.import_key(public_key)
+    # On utilise PKCS1_OAEP pour le chiffrement RSA, qui est un schéma de chiffrement sécurisé et largement utilisé
+    cipher = PKCS1_OAEP.new(rsa_key)
+    return cipher.encrypt(plain_data)
+
+def rsa_decrypt(ciphertext: bytes, private_key: bytes) -> bytes:
+    """
+    Déchiffre des données à l'aide de la clé privée RSA
+    :param ciphertext: les données chiffrées à déchiffrer
+    :param private_key: la clé privée RSA pour le déchiffrement
+    :return: les données déchiffrées en bytes
+    """
+    # On importe la clé privée pour créer un objet RSA utilisable
+    rsa_key = RSA.import_key(private_key)
+    # On utilise PKCS1_OAEP pour le déchiffrement RSA
+    cipher = PKCS1_OAEP.new(rsa_key)
+    return cipher.decrypt(ciphertext)
+
+def chacha_generate_key() -> bytes:
+    """
+    Génère une clé de chiffrement symétrique de 32 bytes pour ChaCha20-Poly1305
+    
+    :return: la clé de chiffrement générée en bytes
+    """
+    return ChaCha20Poly1305.generate_key()
+
+def chacha_encrypt(plaintext: bytes, key: bytes) -> tuple[bytes, bytes, bytes]:
+    """
+    Chiffre des données avec ChaCha20-Poly1305
+    :param plaintext: données à chiffrer
+    :param key: clé symétrique (32 bytes)
+    :return: tuple (nonce, ciphertext, tag)
+    """
+    chacha = ChaCha20Poly1305(key)
+
+    # nonce de 12 bytes obligatoire
+    nonce = os.urandom(12)
+
+    ciphertext_with_tag = chacha.encrypt(nonce, plaintext, None)
+
+    # séparation ciphertext / tag (tag = 16 derniers bytes)
+    ciphertext = ciphertext_with_tag[:-16]
+    tag = ciphertext_with_tag[-16:]
+
+    return nonce, ciphertext, tag
+
+def chacha_decrypt(ciphertext: bytes, key: bytes, nonce: bytes, tag: bytes) -> bytes:
+    """
+    Déchiffre des données avec ChaCha20-Poly1305
+
+    :param ciphertext: données chiffrées
+    :param key: clé symétrique (32 bytes)
+    :param nonce: nonce utilisé lors du chiffrement
+    :param tag: tag d'intégrité (16 bytes)
+    :return: plaintext déchiffré
+    """
+    chacha = ChaCha20Poly1305(key)
+
+    ciphertext_with_tag = ciphertext + tag
+
+    return chacha.decrypt(nonce, ciphertext_with_tag, None)

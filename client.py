@@ -181,8 +181,6 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
             else:
                 logger_client.warning(f"Type d'échange inconnu reçu: {exchange_type}")
         
-            # Ajout de l'objet tui_msg à la queue inbound pour affichage dans l'interface
-            q_inbound.put(tui_msg)
 
         except Exception as e:
             logger_client.error(f"Erreur lors du traitement d'un message entrant: {e}")
