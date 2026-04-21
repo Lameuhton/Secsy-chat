@@ -100,11 +100,6 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         logger_server.info(f"Utilisateur authentifié : {pseudo}")
 
     # ------------------------------------------------------------
-    # GESTION CLE RSA
-    # ------------------------------------------------------------
-     
-    
-    # ------------------------------------------------------------
     # AJOUT DU CLIENT AU DICTIONNAIRE DES CLIENTS CONNECTES + ENVOI D'UN EVENEMENT DE CONNEXION A TOUS LES CLIENTS
     # ------------------------------------------------------------
     with clients_lock: # Section critique protégée

@@ -42,12 +42,15 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             plaintext = message_str.encode("utf-8")
             cipher_text_size = len(plaintext)
             
+            # Génération d'une clé symétrique ChaCha (utilisé pour chiffrer le msg clair) à chaque msg 
+            # --> symétrique = + rapide
             chacha_key = security.chacha_generate_key()
+            # Chiffrement du message avec ChaCha
             nonce, ciphertext_with_tag = security.chacha_encrypt(plaintext, chacha_key)
             full_ciphertext = nonce + ciphertext_with_tag
             
             recipient_public_key = public_keys.get(msg.recipient_name)
-            # Chiffrement de la clé symétrique ChaCha avec la clé publique du destinataire (RSA)
+            # Chiffrement asymétrique de la clé symétrique ChaCha par la clé publique du destinataire (RSA) --> chiffrement d'une clé de chiffrement
             encrypted_key = security.rsa_encrypt(chacha_key, recipient_public_key)
 
                 
@@ -65,7 +68,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                 },
                 "payload": {
                     "cipher_text": full_ciphertext.hex(),  # On convertit en hex pour que ce soit du texte et pas des bytes
-                    "cipher_text_size": cipher_text_size,
+                    "cipher_text_size": cipher_text_size, # Sera utilisé pour la partie intégrité du message (checksum)
                     "cipher_text_encrypted_key": encrypted_key.hex()
                 },
                 "integrity": {
