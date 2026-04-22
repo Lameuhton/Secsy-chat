@@ -51,6 +51,27 @@ def select_data(connection: Connection, query: str) -> List[Tuple]:
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
     return resultat
 
+def get_last_channel_msg(connection: Connection, channel_id: str) -> List[Tuple]:
+    cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
+    
+    # Message "safe" des injections car ? sera remplacé par du txt considéré comme python
+    cursor.execute("SELECT * FROM channel_message WHERE  recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (channel_id,))
+    
+    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    return resultat
+
+'''!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+def get_last_user_msg(connection: Connection, user_id: str) -> List[Tuple]:
+    cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
+    
+    # Message "safe" des injections car ? sera remplacé par du txt considéré comme python
+    # Il y a "OR" car on prend autant les messages envoyés par Michel que ceux qu'il a reçus
+    cursor.execute("SELECT * FROM [!message privé!] WHERE  sender_id = ? OR recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (user_id, user_id))
+    
+    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    return resultat
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'''
+
 def execute_script(connection, path: str):
     """
     Exécute un script directement en base de données en utilisant une connexion existante
