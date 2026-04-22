@@ -119,10 +119,33 @@ def execute_seed(connection):
             payload_cipher_text_size INTEGER NOT NULL,
             payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
             integrity_checksum VARCHAR(255) NOT NULL,
-            integrity_signature TEXT(65535) NOT NULL
+            integrity_signature TEXT(65535) NOT NULL,
+            FOREIGN KEY (recipient_id) REFERENCES channel(id),
+            FOREIGN KEY (sender_id) REFERENCES user(id)
         )
     """)
-
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS channel (
+            id VARCHAR(21) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            secret VARCHAR(255) NOT NULL,
+            private_key TEXT(65535) NOT NULL,
+            public_key TEXT(65535) NOT NULL,
+            created_at DATETIME NOT NULL,
+            owner_id VARCHAR(21) NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES user(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS channel_member (
+            channel_id VARCHAR(21) NOT NULL, #peut avoir plusieur fois l'id du channel (si plusieur membres)
+            user_id VARCHAR(21) NOT NULL, #peut avoir plusieurs fois un nom (si 1 membre dans plsuieurs channels)
+            joined_at DATETIME NOT NULL,
+            PRIMARY KEY (channel_id, user_id), #seule la combinaison des deux doit être unique
+            FOREIGN KEY (channel_id) REFERENCES channel(id),
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
     connection.commit()
 
 
