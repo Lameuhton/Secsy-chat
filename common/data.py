@@ -162,7 +162,7 @@ def add_channel(channel: dict, owner_id):
     database.insert_data(
         connexion,
         "channel",
-        (
+        ( # Noms des champs en BD
             "id",
             "name",
             "secret",
@@ -171,7 +171,7 @@ def add_channel(channel: dict, owner_id):
             "created_at",
             "owner_id"
         ),
-        (
+        (  # Noms des variables données dans la fonction de base qui devront être insérées dans les noms des champs en BD
             channel_id,
             channel_name,
             channel_secret,
