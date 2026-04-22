@@ -1,4 +1,4 @@
-from common import database
+from common import database, security
 from nanoid import generate
 from datetime import datetime
 
@@ -88,8 +88,6 @@ def update_user_last_activity(user_id: str):
     connexion.commit()
     database.close_connection(connexion)
 
-
-
 def add_message(message: dict):
     """
     Cette fonction prend en entrée un dictionnaire représentant un message déjà
@@ -139,6 +137,49 @@ def add_message(message: dict):
     
     database.close_connection(connexion)
     
+#---------- Channel ------------
+
+def add_channel(channel: dict, owner_id):
+    """
+    Cette fonction prend en entrée un dictionnaire représentant un channel déjà
+    validé (issu du parsing du JSON reçu). Elle extrait les informations
+    nécessaires et les insère dans la table `channel`.
+    :param channel: dictionnaire contenant les informations du channel (format du return des fonctions parse dans statement)
+    :owner_id: str - id du user qui a crée le channel   
+    """
+
+    channel_id = generate()
+    channel_name = channel["payload"]["data"]["name"]
+    channel_secret = channel["payload"]["data"]["secret"]
+    private_key, public_key = security.rsa_generate_keypair()
+    channel_private_key = private_key.hex()
+    channel_public_key = public_key.hex()
+    channel_created_at = channel["timestamp"]
+    channel_owner_id = owner_id 
     
+    connexion = database.connect_to_db(DB_PATH)
     
+    database.insert_data(
+        connexion,
+        "channel",
+        (
+            "id",
+            "name",
+            "secret",
+            "private_key",
+            "public_key",
+            "created_at",
+            "owner_id"
+        ),
+        (
+            channel_id,
+            channel_name,
+            channel_secret,
+            channel_private_key,
+            channel_public_key,
+            channel_created_at,
+            channel_owner_id
+        )
+    )
     
+    database.close_connection(connexion)
