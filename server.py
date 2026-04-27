@@ -146,8 +146,11 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             user = data.get_user(parsed_msg["sender"]["name"])
             # Ajout de l'id du sender dans le message parsé
             parsed_msg["sender"]["id"] = user[0]
-            # Sauvegarde en base de données du message
-            data.add_message(parsed_msg)
+            # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
+            if parsed_msg["recipient"]["type"] == "CHANNEL" :
+                data.add_message(parsed_msg)
+            elif parsed_msg["recipient"]["type"] == "USER" :
+                data.add_private_message(parsed_msg)
             # Update la dernière activité de l'utilisateur
             data.update_user_last_activity(user[0])
             # Appel de la fonction pour renvoyer le message à tous les clients

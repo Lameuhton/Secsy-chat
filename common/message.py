@@ -28,18 +28,15 @@ def parse_message(payload: bytes):
     payload_data = data.get("payload", {})
     payload_cipher_text = payload_data.get("cipher_text")
 
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # Par encore traités pour cette itération car par encore de notion de cannaux et d'intégrité
-    # (mais à uncomment et à rajouter dans le return plus tard )
+    # Partie décommentée lors de l'itération 6 : ajout de la notion de canaux et d'intégrité (+ ajout au retur)
 
-    #recipient_id = recipient.get("id")
-    #recipient_name = recipient.get("name")
-    #payload_cipher_text_size = payload_data.get("cipher_text_size")
-    #payload_cipher_text_encrypted_key = payload_data.get("cipher_text_encrypted_key")
-    #integrity = data.get("integrity", {})
-    #integrity_checksum = integrity.get("checksum")
-    #integrity_signature = integrity.get("signature")
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    recipient_id = recipient.get("id")
+    recipient_name = recipient.get("name")
+    payload_cipher_text_size = payload_data.get("cipher_text_size")
+    payload_cipher_text_encrypted_key = payload_data.get("cipher_text_encrypted_key")
+    integrity = data.get("integrity", {})
+    integrity_checksum = integrity.get("checksum")
+    integrity_signature = integrity.get("signature")
 
     return {
         "timestamp": timestamp,
@@ -49,16 +46,16 @@ def parse_message(payload: bytes):
             },
         "recipient": {
             "type": recipient_type,
-            "id": "xxxxxxxxxxxxxxxxxxxx",
-            "name": "X"
+            "id": recipient_id,
+            "name": recipient_name
             },
         "payload": {
             "cipher_text": payload_cipher_text,
-            "cipher_text_size": "1",
-            "cipher_text_encrypted_key": "x"
+            "cipher_text_size": payload_cipher_text_size,
+            "cipher_text_encrypted_key": payload_cipher_text_encrypted_key
             },
         "integrity": {
-            "checksum": "xxx",
-            "signature": "xxx"
+            "checksum": integrity_checksum,
+            "signature": integrity_signature
         }
     }

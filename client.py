@@ -7,10 +7,21 @@ import logging
 import json
 import os
 
+import sys 
+# sys.argv = liste qui contient les arguments passés au script
+# Usage : python client.py <ip> <port> <pseudo>
+# Exemple pour lancer le programme : python client.py 127.0.0.1 4000 Sophie
+# sys.argv[0] → Nom du script (client.py)
+# sys.argv[1] → Adresse IP : "127.0.0.1"
+# sys.argv[2] → Port : "4000"
+# sys.argv[3] → Pseudo : par exemple "Sophie"
+
 # Chemins pour les clés RSA
-KEYS_DIR = "keys"
-PRIVATE_KEY_PATH = os.path.join(KEYS_DIR, "private.pem")
-PUBLIC_KEY_PATH = os.path.join(KEYS_DIR, "public.pem")
+# Problème : les chemins sont fixes et ne dépendent pas du pseudo --> Possibilité d'écraser mutuellement les clés.
+# Conseil de solution : construire le chemin dans le main sur base du pseudo.
+#KEYS_DIR = "keys"
+#PRIVATE_KEY_PATH = os.path.join(KEYS_DIR, "private.pem")
+#PUBLIC_KEY_PATH = os.path.join(KEYS_DIR, "public.pem")
 
 
 # CONFIGURATION DU LOGGER
@@ -258,9 +269,21 @@ def main():
 
     logger_client.info("Demarrage de l'application")
 
-    pseudo = input("Entrez votre pseudo: ")
-    if not pseudo:
-        pseudo = "Anonyme"
+    #pseudo = input("Entrez votre pseudo: ")
+    #if not pseudo:
+    #    pseudo = "Anonyme"
+
+    #Vérification du nombre d'arguments passés et sortie propre du programme si ce n'est pas le cas
+    if len(sys.argv) != 4:
+        print("Usage : python client.py <ip> <port> <pseudo>")
+        sys.exit(1)
+
+    #Affectation du pseudo par le passage d'argument à l'appel du programme
+    pseudo = sys.argv[3]
+
+    # Affection des chemins pour les clés
+    private_key_path = f"{pseudo}.key"
+    public_key_path  = f"{pseudo}.pub"  # L'énoncé mentionne uniquement cette pratique pour la clé privée (étendue à la clé publique).
 
     password = getpass("Entrez votre mot de passe: ") # Pas de input pour pas qu'il soit marqué en "clair" dans l'interface utilisateur (on est en sécu quand-même...)
 
@@ -289,7 +312,7 @@ def main():
 
     # Connexion au serveur
     try:
-        sock_client = network.connect_tcp_server("127.0.0.1", 4000)
+        sock_client = network.connect_tcp_server(sys.argv[1], int(sys.argv[2]))
         logger_client.info("Connexion au serveur")
 
     except Exception as e:
@@ -333,15 +356,15 @@ def main():
     # GENERATION RSA
     # -----------------------------------------------------------------
     
-    # Crée le dossier des clés s'il n'existe pas
-    os.makedirs(KEYS_DIR, exist_ok=True)
+    # Crée le dossier des clés s'il n'existe pas --> Pas besoin de créer un répertoire (Voir énoncé)
+    # os.makedirs(KEYS_DIR, exist_ok=True)
     
     # Si les clés existent → on les charge
-    if os.path.exists(PRIVATE_KEY_PATH) and os.path.exists(PUBLIC_KEY_PATH):
-        with open(PRIVATE_KEY_PATH, "rb") as f:
+    if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+        with open(private_key_path, "rb") as f:
             private_key = f.read()
 
-        with open(PUBLIC_KEY_PATH, "rb") as f:
+        with open(public_key_path, "rb") as f:
             public_key = f.read()
     # Sinon → on les génère et on les sauvegarde pour les réutiliser lors de la prochaine connexion
     else:
@@ -349,10 +372,10 @@ def main():
         private_key, public_key = security.rsa_generate_keypair()
 
         # Sauvegarde
-        with open(PRIVATE_KEY_PATH, "wb") as f:
+        with open(private_key_path, "wb") as f:
             f.write(private_key)
 
-        with open(PUBLIC_KEY_PATH, "wb") as f:
+        with open(public_key_path, "wb") as f:
             f.write(public_key)
             
     # Envoi de la clé publique au serveur pour qu'il puisse l'utiliser pour chiffrer les messages destinés à ce client

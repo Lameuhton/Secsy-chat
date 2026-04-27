@@ -136,7 +136,58 @@ def add_message(message: dict):
     )
     
     database.close_connection(connexion)
+
+#-------- Messages privés ------
+
+def add_private_message(message: dict):
+    """
+    Cette fonction prend en entrée un dictionnaire représentant un message déjà
+    validé (issu du parsing du JSON reçu). Elle extrait les informations
+    nécessaires et les insère dans la table `private_message`.
+    :param message: dictionnaire contenant les informations du message (format du return de parse_message)
+    """
+
+    message_id = generate()
+    message_timestamp = message["timestamp"]
+    message_sender_id = message["sender"]["id"]
+    message_recipient_id = message["recipient"]["id"]
+    message_payload_cipher_text = message["payload"]["cipher_text"]
+    message_payload_cipher_text_size = message["payload"]["cipher_text_size"]
+    message_payload_cipher_text_encrypted_key = message["payload"]["cipher_text_encrypted_key"]
+    message_integrity_checksum = message["integrity"]["checksum"]
+    message_integrity_signature = message["integrity"]["signature"]
     
+    connexion = database.connect_to_db(DB_PATH)
+    
+    database.insert_data(
+        connexion,
+        "private_message",
+        (
+            "id",
+            "timestamp",
+            "sender_id",
+            "recipient_id",
+            "payload_cipher_text",
+            "payload_cipher_text_size",
+            "payload_cipher_text_encrypted_key",
+            "integrity_checksum",
+            "integrity_signature"
+        ),
+        (
+            message_id,
+            message_timestamp,
+            message_sender_id,
+            message_recipient_id,
+            message_payload_cipher_text,
+            message_payload_cipher_text_size,
+            message_payload_cipher_text_encrypted_key,
+            message_integrity_checksum,
+            message_integrity_signature
+        )
+    )
+    
+    database.close_connection(connexion)
+
 #---------- Channel ------------
 
 def add_channel(channel: dict, owner_id):
