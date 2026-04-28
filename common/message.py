@@ -27,16 +27,16 @@ def parse_message(payload: bytes):
     recipient_type = recipient.get("type")
     payload_data = data.get("payload", {})
     payload_cipher_text = payload_data.get("cipher_text")
-
-    # Partie décommentée lors de l'itération 6 : ajout de la notion de canaux et d'intégrité (+ ajout au retur)
-
     recipient_id = recipient.get("id")
     recipient_name = recipient.get("name")
     payload_cipher_text_size = payload_data.get("cipher_text_size")
     payload_cipher_text_encrypted_key = payload_data.get("cipher_text_encrypted_key")
-    integrity = data.get("integrity", {})
-    integrity_checksum = integrity.get("checksum")
-    integrity_signature = integrity.get("signature")
+
+    # Décommenter plus tard pour itération suivante
+
+    # integrity = data.get("integrity", {})
+    # integrity_checksum = integrity.get("checksum")
+    # integrity_signature = integrity.get("signature")
 
     return {
         "timestamp": timestamp,
@@ -55,7 +55,7 @@ def parse_message(payload: bytes):
             "cipher_text_encrypted_key": payload_cipher_text_encrypted_key
             },
         "integrity": {
-            "checksum": integrity_checksum,
-            "signature": integrity_signature
+            "checksum": "",
+            "signature": ""
         }
     }

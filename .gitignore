@@ -15,5 +15,5 @@ app_client.log
 
 database.db
 
-# Dossiers de clés RSA
-keys/
+# Clé privée
+*.key

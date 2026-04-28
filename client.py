@@ -5,9 +5,11 @@ from secsychat_tui import SecsyChatTui, TuiMessage, TuiMessageSenderType, TuiMes
 from getpass import getpass
 import logging
 import json
+import ipaddress
 import os
+import sys
+import re
 
-import sys 
 # sys.argv = liste qui contient les arguments passés au script
 # Usage : python client.py <ip> <port> <pseudo>
 # Exemple pour lancer le programme : python client.py 127.0.0.1 4000 Sophie
@@ -264,26 +266,53 @@ def send_to_server(sock, aes_key, data_dict: dict, exchange_type: exchange.Excha
     except Exception as e:
         logger_client.error(f"Erreur lors de l'envoi au serveur: {e}", exc_info=True)
 
+def is_valid_ip(ip):
+    """Vérifie si l'adresse IP est valide"""
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
+    
+def is_valid_port(port):
+    """Vérifie si le port est valide (entre 0 et 65535)"""
+    try:
+        port = int(port)
+        return 0 <= port <= 65535
+    except ValueError:
+        return False
+
+def is_valid_pseudo(pseudo):
+    """Vérifie si le pseudo est valide (2 à 20 caractères, lettres, chiffres, underscores et tirets autorisés)"""
+    return re.match(r'^[a-zA-Z0-9_-]{2,20}$', pseudo) is not None
 
 def main():
 
     logger_client.info("Demarrage de l'application")
-
-    #pseudo = input("Entrez votre pseudo: ")
-    #if not pseudo:
-    #    pseudo = "Anonyme"
 
     #Vérification du nombre d'arguments passés et sortie propre du programme si ce n'est pas le cas
     if len(sys.argv) != 4:
         print("Usage : python client.py <ip> <port> <pseudo>")
         sys.exit(1)
 
-    #Affectation du pseudo par le passage d'argument à l'appel du programme
+    ip = sys.argv[1]
+    port = sys.argv[2]
     pseudo = sys.argv[3]
+
+    if not is_valid_ip(ip):
+        print("IP invalide")
+        sys.exit(1)
+
+    if not is_valid_port(port):
+        print("Port invalide")
+        sys.exit(1)
+
+    if not is_valid_pseudo(pseudo):
+        print("Pseudo invalide (2-20 caractères alphanumériques)")
+        sys.exit(1)
 
     # Affection des chemins pour les clés
     private_key_path = f"{pseudo}.key"
-    public_key_path  = f"{pseudo}.pub"  # L'énoncé mentionne uniquement cette pratique pour la clé privée (étendue à la clé publique).
 
     password = getpass("Entrez votre mot de passe: ") # Pas de input pour pas qu'il soit marqué en "clair" dans l'interface utilisateur (on est en sécu quand-même...)
 
@@ -356,17 +385,12 @@ def main():
     # GENERATION RSA
     # -----------------------------------------------------------------
     
-    # Crée le dossier des clés s'il n'existe pas --> Pas besoin de créer un répertoire (Voir énoncé)
-    # os.makedirs(KEYS_DIR, exist_ok=True)
-    
-    # Si les clés existent → on les charge
-    if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+    # Si la clé privée existe → on la charge
+    if os.path.exists(private_key_path):
         with open(private_key_path, "rb") as f:
             private_key = f.read()
 
-        with open(public_key_path, "rb") as f:
-            public_key = f.read()
-    # Sinon → on les génère et on les sauvegarde pour les réutiliser lors de la prochaine connexion
+    # Sinon → on génère une paire de clé et on sauvegarde la privée et on envoie la publique au serveur
     else:
         # Génération des clés
         private_key, public_key = security.rsa_generate_keypair()
@@ -374,12 +398,9 @@ def main():
         # Sauvegarde
         with open(private_key_path, "wb") as f:
             f.write(private_key)
-
-        with open(public_key_path, "wb") as f:
-            f.write(public_key)
             
-    # Envoi de la clé publique au serveur pour qu'il puisse l'utiliser pour chiffrer les messages destinés à ce client
-    network.send_message(sock_client, public_key)
+        # Envoi de la clé publique au serveur pour qu'il puisse l'utiliser pour chiffrer les messages destinés à ce client
+        network.send_message(sock_client, public_key)
     
     
     # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et les afficher dans l'interface    

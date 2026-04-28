@@ -1,3 +1,5 @@
+from typing import List, Tuple
+
 from common import database, security
 from nanoid import generate
 from datetime import datetime
@@ -5,6 +7,9 @@ from datetime import datetime
 #!!!!!!!!!!!!!!!!!!!!
 DB_PATH = "database.db"
 #!!!!!!!!!!!!!!!!!!!!
+
+
+# ---------- User ------------
 
 def user_exists(name: str) -> bool:
     """
@@ -67,6 +72,8 @@ def get_user(name: str) -> tuple:
     # Eviter des erreurs ou crashs si jamais ca ne retourne rien
     if resultat is None:
         return None
+    
+    database.close_connection(connexion)
 
     return resultat
     
@@ -88,7 +95,37 @@ def update_user_last_activity(user_id: str):
     connexion.commit()
     database.close_connection(connexion)
 
-def add_message(message: dict):
+
+# ---------- Channel Message ------------
+
+def get_last_channel_message(channel_id: str) -> List[Tuple]:
+    """
+    Récupère les derniers messages d'un channel à partir de son identifiant unique.
+     :param channel_id: l'identifiant unique du channel
+     :return: une liste de tuples contenant les informations des messages du channel.
+
+             Structure des tuples retournés :
+             (
+                id,
+                timestamp,
+                sender_id,
+                recipient_id,
+                payload_cipher_text,
+                payload_cipher_text_size,
+                payload_cipher_text_encrypted_key,
+                integrity_checksum,
+                integrity_signature
+             )
+    """
+
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor() # Crée un curseur (analogie du bibliothécaire)
+    cursor.execute("SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT 20", (channel_id,))
+    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    database.close_connection(connexion)
+    return resultat
+
+def add_channel_message(message: dict):
     """
     Cette fonction prend en entrée un dictionnaire représentant un message déjà
     validé (issu du parsing du JSON reçu). Elle extrait les informations
@@ -137,7 +174,70 @@ def add_message(message: dict):
     
     database.close_connection(connexion)
 
-#-------- Messages privés ------
+
+#---------- Channel ------------
+
+def add_channel(channel: dict, owner_id):
+    """
+    Cette fonction prend en entrée un dictionnaire représentant un channel déjà
+    validé (issu du parsing du JSON reçu). Elle extrait les informations
+    nécessaires et les insère dans la table `channel`.
+    :param channel: dictionnaire contenant les informations du channel (format du return des fonctions parse dans statement)
+    :owner_id: str - id du user qui a crée le channel   
+    """
+
+    channel_id = generate()
+    channel_name = channel["payload"]["data"]["name"]
+    channel_secret = channel["payload"]["data"]["secret"]
+    private_key, public_key = security.rsa_generate_keypair()
+    channel_private_key = private_key.hex()
+    channel_public_key = public_key.hex()
+    channel_created_at = channel["timestamp"]
+    channel_owner_id = owner_id 
+    
+    connexion = database.connect_to_db(DB_PATH)
+    
+    database.insert_data(
+        connexion,
+        "channel",
+        ( # Noms des champs en BD
+            "id",
+            "name",
+            "secret",
+            "private_key",
+            "public_key",
+            "created_at",
+            "owner_id"
+        ),
+        (  # Noms des variables données dans la fonction de base qui devront être insérées dans les noms des champs en BD
+            channel_id,
+            channel_name,
+            channel_secret,
+            channel_private_key,
+            channel_public_key,
+            channel_created_at,
+            channel_owner_id
+        )
+    )
+    
+    database.close_connection(connexion)
+
+
+# ---------- Messages privés (plus tard) ------------
+
+def get_last_private_message(user_id: str) -> List[Tuple]:
+
+    # A changer plus tard
+
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor() # Crée un curseur (analogie du bibliothécaire)
+    # Message "safe" des injections car ? sera remplacé par du txt considéré comme python
+    # Il y a "OR" car on prend autant les messages envoyés par Michel que ceux qu'il a reçus
+    cursor.execute("SELECT * FROM private_message WHERE  sender_id = ? OR recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (user_id, user_id))
+    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    database.close_connection(connexion)
+    return resultat
+
 
 def add_private_message(message: dict):
     """
@@ -188,49 +288,4 @@ def add_private_message(message: dict):
     
     database.close_connection(connexion)
 
-#---------- Channel ------------
 
-def add_channel(channel: dict, owner_id):
-    """
-    Cette fonction prend en entrée un dictionnaire représentant un channel déjà
-    validé (issu du parsing du JSON reçu). Elle extrait les informations
-    nécessaires et les insère dans la table `channel`.
-    :param channel: dictionnaire contenant les informations du channel (format du return des fonctions parse dans statement)
-    :owner_id: str - id du user qui a crée le channel   
-    """
-
-    channel_id = generate()
-    channel_name = channel["payload"]["data"]["name"]
-    channel_secret = channel["payload"]["data"]["secret"]
-    private_key, public_key = security.rsa_generate_keypair()
-    channel_private_key = private_key.hex()
-    channel_public_key = public_key.hex()
-    channel_created_at = channel["timestamp"]
-    channel_owner_id = owner_id 
-    
-    connexion = database.connect_to_db(DB_PATH)
-    
-    database.insert_data(
-        connexion,
-        "channel",
-        ( # Noms des champs en BD
-            "id",
-            "name",
-            "secret",
-            "private_key",
-            "public_key",
-            "created_at",
-            "owner_id"
-        ),
-        (  # Noms des variables données dans la fonction de base qui devront être insérées dans les noms des champs en BD
-            channel_id,
-            channel_name,
-            channel_secret,
-            channel_private_key,
-            channel_public_key,
-            channel_created_at,
-            channel_owner_id
-        )
-    )
-    
-    database.close_connection(connexion)

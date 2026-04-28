@@ -51,26 +51,6 @@ def select_data(connection: Connection, query: str) -> List[Tuple]:
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
     return resultat
 
-def get_last_channel_msg(connection: Connection, channel_id: str) -> List[Tuple]:
-    cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
-    
-    # Message "safe" des injections car ? sera remplacé par du txt considéré comme python
-    cursor.execute("SELECT * FROM channel_message WHERE  recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (channel_id,))
-    
-    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
-    return resultat
-
-
-def get_last_user_msg(connection: Connection, user_id: str) -> List[Tuple]:
-    cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
-    
-    # Message "safe" des injections car ? sera remplacé par du txt considéré comme python
-    # Il y a "OR" car on prend autant les messages envoyés par Michel que ceux qu'il a reçus
-    cursor.execute("SELECT * FROM private_message WHERE  sender_id = ? OR recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (user_id, user_id))
-    
-    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
-    return resultat
-
 def execute_script(connection, path: str):
     """
     Exécute un script directement en base de données en utilisant une connexion existante
@@ -130,6 +110,18 @@ def execute_seed(connection):
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS channel (
+            id VARCHAR(21) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            secret VARCHAR(255) NOT NULL,
+            private_key TEXT(65535) NOT NULL,
+            public_key TEXT(65535) NOT NULL,
+            created_at DATETIME NOT NULL,
+            owner_id VARCHAR(21) NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES user(id)
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS channel_message (
             id VARCHAR(21) PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
@@ -145,33 +137,6 @@ def execute_seed(connection):
         )
     """)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS private_message (
-            id VARCHAR(21) PRIMARY KEY,
-            timestamp TIMESTAMP NOT NULL,
-            sender_id VARCHAR(21) NOT NULL,
-            recipient_id VARCHAR(21) NOT NULL,
-            payload_cipher_text TEXT(65535) NOT NULL,
-            payload_cipher_text_size INTEGER NOT NULL,
-            payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
-            integrity_checksum VARCHAR(255) NOT NULL,
-            integrity_signature TEXT(65535) NOT NULL,
-            FOREIGN KEY (recipient_id) REFERENCES user(id),
-            FOREIGN KEY (sender_id) REFERENCES user(id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS channel (
-            id VARCHAR(21) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL UNIQUE,
-            secret VARCHAR(255) NOT NULL,
-            private_key TEXT(65535) NOT NULL,
-            public_key TEXT(65535) NOT NULL,
-            created_at DATETIME NOT NULL,
-            owner_id VARCHAR(21) NOT NULL,
-            FOREIGN KEY (owner_id) REFERENCES user(id)
-        )
-    """)
-    cursor.execute("""
         CREATE TABLE IF NOT EXISTS channel_member (
             channel_id VARCHAR(21) NOT NULL, #peut avoir plusieur fois l'id du channel (si plusieur membres)
             user_id VARCHAR(21) NOT NULL, #peut avoir plusieurs fois un nom (si 1 membre dans plsuieurs channels)
@@ -181,6 +146,22 @@ def execute_seed(connection):
             FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
+    # Plus tard (messages privés)
+    # cursor.execute("""
+    #     CREATE TABLE IF NOT EXISTS private_message (
+    #         id VARCHAR(21) PRIMARY KEY,
+    #         timestamp TIMESTAMP NOT NULL,
+    #         sender_id VARCHAR(21) NOT NULL,
+    #         recipient_id VARCHAR(21) NOT NULL,
+    #         payload_cipher_text TEXT(65535) NOT NULL,
+    #         payload_cipher_text_size INTEGER NOT NULL,
+    #         payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
+    #         integrity_checksum VARCHAR(255) NOT NULL,
+    #         integrity_signature TEXT(65535) NOT NULL,
+    #         FOREIGN KEY (recipient_id) REFERENCES user(id),
+    #         FOREIGN KEY (sender_id) REFERENCES user(id)
+    #     )
+    # """)  
     connection.commit()
 
 

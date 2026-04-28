@@ -83,10 +83,10 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     premier_message = network.receive_message_as_str(sock_client)
     pseudo, password = premier_message.split("|") # Car on l'a mis en forme <pseudo>|<paswd>
     
-    public_key = network.receive_message(sock_client)
     
     # Vérification de l'existence de l'utilisateur et du mot de passe
     if not data.user_exists(pseudo):
+        public_key = network.receive_message(sock_client)
         hashed_password = security.argon2_hash_password(password)
         data.create_user(pseudo, hashed_password, public_key.decode('utf-8'))
         logger_server.info(f"Nouvel utilisateur créé : {pseudo}")
@@ -148,7 +148,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             parsed_msg["sender"]["id"] = user[0]
             # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
             if parsed_msg["recipient"]["type"] == "CHANNEL" :
-                data.add_message(parsed_msg)
+                data.add_channel_message(parsed_msg)
             elif parsed_msg["recipient"]["type"] == "USER" :
                 data.add_private_message(parsed_msg)
             # Update la dernière activité de l'utilisateur
