@@ -21,7 +21,7 @@ clients_connectes = {}
 clients_lock = Lock()
 
 
-def broadcast_to_clients(plaindata: dict, exchange_type: exchange.ExchangeType):
+def broadcast_to_clients(plaindata: dict, exchange_type: exchange.ExchangeType, clients_dict):
     """
     Fonction pour renvoyer un message à tous les clients connectés. Le message est d'abord converti en JSON puis en bytes avant d'être chiffré et envoyé.
     :param plaindata: le message en clair à renvoyer aux clients (dictionnaire Python)
@@ -31,7 +31,7 @@ def broadcast_to_clients(plaindata: dict, exchange_type: exchange.ExchangeType):
     # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
         with clients_lock: 
             # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client ainsi que leur clé AES associée
-            for addr, (client_sock, client_key, pseudo) in clients_connectes.items():
+            for addr, (client_sock, client_key, pseudo) in clients_dict.items():
 
                 json_bytes = json.dumps(plaindata).encode('utf-8') # Convertit le message en JSON puis en bytes
                 # Rechiffre le message avec la clé AES de chaque client
@@ -108,7 +108,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     
     # Envoi à tous les clients d'un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter
     event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True)
-    broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT)
+    broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
 
     # ------------------------------------------------------------
     # GESTION DES MESSAGES RECUS
@@ -121,7 +121,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         if not response:
             logger_server.info(f"{pseudo} déconnecté brutalement")
             event_payload = event.build_user_updated(time.time(), pseudo, pseudo, False)
-            broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT)
+            broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
             break
         
         # Récupère le type et le contenu de l'échange
@@ -154,7 +154,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             # Update la dernière activité de l'utilisateur
             data.update_user_last_activity(user[0])
             # Appel de la fonction pour renvoyer le message à tous les clients
-            broadcast_to_clients(parsed_msg, exchange_type)
+            broadcast_to_clients(parsed_msg, exchange_type, clients_connectes)
             
         elif exchange_type == exchange.ExchangeType.STATEMENT:
             # Parse de l'instruction (JSON → dictionnaire Python)
@@ -164,19 +164,16 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             if parsed_statement["payload"]["name"] == "GET_USERS":
                 # Le serveur envoie à l'émetteur un événement USER_UPDATED pour chaque client connecté dans le dictionnaire
                 with clients_lock:
-                    for addr, (client_sock, client_key, pseudo) in clients_connectes.items():
-
-                        user = data.get_user(pseudo)
+                    for addr_loop, (client_sock_loop, client_key_loop, pseudo_loop) in clients_connectes.items():
+                        
+                        # Récupération des infos d'un user dans la liste des user connectés
+                        user = data.get_user(pseudo_loop)
                         public_key = user[3] # Car user = (id, name, secret, public_key, created_at, last_activity_at)
-                        event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True, public_key)
-                        # Chiffrement de l'événement avec la clé AES du client
-                        nonce, cyphertext, tag = security.aes_encrypt(json.dumps(event_payload).encode('utf-8'), aes_key)
-                        payload_renvoi = nonce + tag + cyphertext
-                         # Ajout du type du message
-                        type_byte = str(exchange.ExchangeType.EVENT.value).encode() # Convertit le type d'échange en byte pour l'inclure dans le message envoyé
-                        final_payload = type_byte + payload_renvoi
-                        # Envoi de l'événement à l'émetteur de la requête GET_USERS (et pas à tous les clients)
-                        network.send_message(sock_client, final_payload)
+                        event_payload = event.build_user_updated(time.time(), pseudo_loop, pseudo_loop, True, public_key)
+                        
+                        # Envoi au client connecté actuel (qui a fait le GET_USERS)
+                        single_client = { addr: (sock_client, aes_key, pseudo) }
+                        broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT, single_client)
 
             if parsed_statement["payload"]["name"] == "UPDATE_USER":
                 # Vérifie le status dans parsed_statement (True = connecté, False = déconnecté)
@@ -196,7 +193,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 
                 # Renvoie à tous les clients un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter ou de se déconnecter
                 event_payload = event.build_user_updated(parsed_statement["timestamp"], pseudo, pseudo, parsed_statement["payload"]["data"]["status"])
-                broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT)
+                broadcast_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
 
     # ------------------------------------------------------------
     # DECONNEXION DU CLIENT
