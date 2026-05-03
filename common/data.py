@@ -222,6 +222,89 @@ def add_channel(channel: dict, owner_id):
     
     database.close_connection(connexion)
 
+#------------------- A FAIRE ------------------------
+
+def add_user_to_channel(user_id: str, channel_id: str) -> None:
+    """
+    Ajoute un utilisateur à un canal.
+    Doit insérer une entrée dans la table `channel_member` avec la date d'ajout.
+
+    Contraintes :
+    - Vérifier que l'utilisateur existe
+    - Vérifier que le canal existe
+    - Éviter les doublons (user déjà membre)
+
+    :param user_id: Identifiant de l'utilisateur à ajouter
+    :param channel_id: Identifiant du canal
+    :return: None
+    """
+
+def remove_user_from_channel(user_id: str, channel_id: str) -> None:
+    """
+    Supprime un utilisateur d'un canal.
+
+    :param user_id: Identifiant de l'utilisateur
+    :param channel_id: Identifiant du canal
+    :return: None
+
+    Doit supprimer l'entrée correspondante dans `channel_member`.
+
+    Contraintes :
+    - Vérifier que l'utilisateur est bien membre
+    """
+
+def get_user_channels(user_id: str) -> List[dict]:
+    """
+    Récupère tous les canaux dont un utilisateur est membre.
+
+    :param user_id: Identifiant de l'utilisateur
+    :return: Liste des canaux (dict)
+
+    Doit faire une jointure entre `channel_member` et `channel`.
+
+    Exemple de retour :
+    [
+        {"id": "...", "name": "..."},
+        ...
+    ]
+    """
+
+def get_channel_members(channel_id: str) -> List[dict]:
+    """
+    Récupère tous les membres d'un canal.
+
+    :param channel_id: Identifiant du canal
+    :return: Liste des utilisateurs (dict)
+
+    Doit faire une jointure entre `channel_member` et `user`.
+    """
+
+def delete_channel(channel_id: str) -> None:
+    """
+    Supprime un canal.
+
+    :param channel_id: Identifiant du canal
+    :return: None
+
+    Doit :
+    - Supprimer le canal dans `channel`
+    - Supprimer automatiquement ses membres (CASCADE recommandé)
+
+    Note :
+    Si la contrainte ON DELETE CASCADE est bien définie en DB,
+    pas besoin de supprimer manuellement dans `channel_member`.
+    """
+
+def get_channel_owner(channel_id: str) -> str:
+    """
+    Récupère l'identifiant du propriétaire d'un canal.
+
+    :param channel_id: Identifiant du canal
+    :return: user_id du propriétaire
+
+    Utile pour :
+    - Vérifier les droits (kick, delete, etc.)
+    """
 
 # ---------- Messages privés (plus tard) ------------
 
