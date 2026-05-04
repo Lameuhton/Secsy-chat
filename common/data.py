@@ -222,34 +222,73 @@ def add_channel(channel: dict, owner_id):
 
 #------------------- A FAIRE ------------------------
 
+def user_exists_in_channel(user_id: str, channel_id: str) -> bool:
+    """
+    Détermine l'existence d'un utilisateur dans un channel sur base de son id 
+    :param user_id: l'id de l'utilisateur
+    :param channel_id : l'id du channel
+    :return: `True` si un utilisateur existe sur base du nom fourni, sinon `False`
+    """
+    connexion = database.connect_to_db(DB_PATH) 
+    cursor = connexion.cursor()
+    cursor.execute("SELECT 1 FROM channel_member WHERE user_id = ? AND channel_id = ?", (user_id, channel_id)) 
+    # Rappel : Il y a une virgule après la requête SQL pourqu'il soit considéré comme un tuple (exécute utilise un tuple)
+    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    database.close_connection(connexion)
+    if not resultat:
+        return False
+    else:
+        return True
+    
 def add_user_to_channel(user_id: str, channel_id: str) -> None:
     """
     Ajoute un utilisateur à un canal.
     Doit insérer une entrée dans la table `channel_member` avec la date d'ajout.
-
-    Contraintes :
-    - Vérifier que l'utilisateur existe
-    - Vérifier que le canal existe
-    - Éviter les doublons (user déjà membre)
-
+    Contraintes : Vérifier que l'utilisateur existe et que le canal existe | Éviter les doublons (vérfier si le user déjà membre)
     :param user_id: Identifiant de l'utilisateur à ajouter
     :param channel_id: Identifiant du canal
     :return: None
     """
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+
+    cursor.execute("SELECT 1 FROM user WHERE id = ?", (user_id,))
+    if not cursor.fetchall():
+        database.close_connection(connexion)
+        return None
+
+    cursor.execute("SELECT 1 FROM channel WHERE id = ?", (channel_id,))
+    if not cursor.fetchall():
+        database.close_connection(connexion)
+        return None
+
+    if user_exists_in_channel(user_id, channel_id) :
+        database.close_connection(connexion)
+        return None
+    else :
+        now = datetime.now()
+        database.insert_data(connexion,"channel_member", ("channel_id", "user_id", "joined_at"), (channel_id, user_id, now))
+        database.close_connection(connexion)
+        return None
 
 def remove_user_from_channel(user_id: str, channel_id: str) -> None:
     """
     Supprime un utilisateur d'un canal.
-
+    Doit supprimer l'entrée correspondante dans `channel_member`.
+    Contraintes : Vérifier que l'utilisateur est bien membre
     :param user_id: Identifiant de l'utilisateur
     :param channel_id: Identifiant du canal
     :return: None
-
-    Doit supprimer l'entrée correspondante dans `channel_member`.
-
-    Contraintes :
-    - Vérifier que l'utilisateur est bien membre
     """
+    if user_exists_in_channel(user_id, channel_id) :
+        connexion = database.connect_to_db(DB_PATH)
+        cursor = connexion.cursor()
+        cursor.execute("DELETE FROM channel_member WHERE user_id = ? AND channel_id = ?", (user_id, channel_id))
+        connexion.commit()
+        database.close_connection(connexion)
+        return None
+    else :
+          return None
 
 def get_user_channels(user_id: str) -> List[dict]:
     """
