@@ -68,12 +68,12 @@ def get_user(name: str) -> tuple:
     cursor = connexion.cursor()
     cursor.execute("SELECT * FROM user WHERE name = ?", (name,))
     resultat = cursor.fetchone()
+    
+    database.close_connection(connexion)
 
     # Eviter des erreurs ou crashs si jamais ca ne retourne rien
     if resultat is None:
         return None
-    
-    database.close_connection(connexion)
 
     return resultat
     
