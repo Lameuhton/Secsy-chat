@@ -8,7 +8,7 @@ import json
 import ipaddress
 import os
 import sys
-import re
+import re #regex
 
 # sys.argv = liste qui contient les arguments passés au script
 # Usage : python client.py <ip> <port> <pseudo>

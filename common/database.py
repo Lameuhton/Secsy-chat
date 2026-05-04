@@ -39,7 +39,9 @@ def insert_data(connection: Connection, table: str, columns: Tuple, data: Tuple)
     #commit = ctrl+S
     connection.commit()
 
-def select_data(connection: Connection, query: str) -> List[Tuple]:
+def select_data(connection: Connection, query: str) -> List[Tuple]: 
+    # NB: serait + sécurisé de mettre 'params' qui prendait les paramètres séparés à la requête pour éviter les injections mais
+    # paramètres de la fonction inmodifiables car fonction donnée par le prof et consignes interdisent ça.
     """
     Sélectionne des tuples depuis la base de donnée (connection) et retourne les enregistrements correspondants
     :param connection: la connexion déjà établie à la base de données
@@ -47,7 +49,7 @@ def select_data(connection: Connection, query: str) -> List[Tuple]:
     :return: les enregistrements correspondants au résultat de la reqête
     """
     cursor = connection.cursor() # Crée un curseur (analogie du bibliothécaire)
-    cursor.execute(query)
+    cursor.execute(query) # C'est ici que 'params' aurait pu être introduit '(query, params)'
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
     return resultat
 

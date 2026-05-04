@@ -119,9 +119,7 @@ def get_last_channel_message(channel_id: str) -> List[Tuple]:
     """
 
     connexion = database.connect_to_db(DB_PATH)
-    cursor = connexion.cursor() # Crée un curseur (analogie du bibliothécaire)
-    cursor.execute("SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT 20", (channel_id,))
-    resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = '{channel_id}' ORDER BY timestamp DESC LIMIT 20")
     database.close_connection(connexion)
     return resultat
 
