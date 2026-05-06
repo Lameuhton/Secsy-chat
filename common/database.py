@@ -146,6 +146,7 @@ def execute_seed(connection):
             PRIMARY KEY (channel_id, user_id), #seule la combinaison des deux doit être unique
             FOREIGN KEY (channel_id) REFERENCES channel(id),
             FOREIGN KEY (user_id) REFERENCES user(id)
+            ON DELETE CASCADE
         )
     """)
     # Plus tard (messages privés)

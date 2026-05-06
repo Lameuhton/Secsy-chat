@@ -119,7 +119,7 @@ def get_last_channel_message(channel_id: str) -> List[Tuple]:
     """
 
     connexion = database.connect_to_db(DB_PATH)
-    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = '{channel_id}' ORDER BY timestamp DESC LIMIT 20")
+    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT 20", (channel_id,))
     database.close_connection(connexion)
     return resultat
 
@@ -252,19 +252,23 @@ def add_user_to_channel(user_id: str, channel_id: str) -> None:
     connexion = database.connect_to_db(DB_PATH)
     cursor = connexion.cursor()
 
+    # Vérification de l'existence de l'utilisateur
     cursor.execute("SELECT 1 FROM user WHERE id = ?", (user_id,))
     if not cursor.fetchall():
         database.close_connection(connexion)
         return None
 
+    # Vérification de l'existence du canal
     cursor.execute("SELECT 1 FROM channel WHERE id = ?", (channel_id,))
     if not cursor.fetchall():
         database.close_connection(connexion)
         return None
 
+    # Vérification si l'utilisateur est déjà membre du canal (pour éviter les doublons)
     if user_exists_in_channel(user_id, channel_id) :
         database.close_connection(connexion)
         return None
+    # Sinon, on ajoute l'utilisateur au canal
     else :
         now = datetime.now()
         database.insert_data(connexion,"channel_member", ("channel_id", "user_id", "joined_at"), (channel_id, user_id, now))
