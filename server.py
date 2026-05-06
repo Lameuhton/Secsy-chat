@@ -31,8 +31,11 @@ def send_msg_to_clients(plaindata: dict, exchange_type: exchange.ExchangeType, c
     # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
         with clients_lock: 
             # .items() permet de récupérer d'un coup l'adresse (clé) et le socket (valeur) de chaque client ainsi que leur clé AES associée
-            for addr, (client_sock, client_key, pseudo) in clients_dict.items():
+            for addr, client_data in clients_dict.items():
 
+                client_sock = client_data["sock"]
+                client_key = client_data["aes_key"]
+                
                 json_bytes = json.dumps(plaindata).encode('utf-8') # Convertit le message en JSON puis en bytes
                 # Rechiffre le message avec la clé AES de chaque client
                 nonce, cyphertext, tag = security.aes_encrypt(json_bytes, client_key)
@@ -88,11 +91,13 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     if not data.user_exists(pseudo):
         public_key = network.receive_message(sock_client)
         hashed_password = security.argon2_hash_password(password)
-        data.create_user(pseudo, hashed_password, public_key.decode('utf-8'))
+        user_id = data.create_user(pseudo, hashed_password, public_key.decode('utf-8'))
         logger_server.info(f"Nouvel utilisateur créé : {pseudo}")
     else:
         user = data.get_user(pseudo)
-        verif_mdp = user[2] # Car user = (id, name, secret, created_at, last_activity_at)
+        user_id = user[0]
+        public_key = user[3]
+        verif_mdp = user[2] # Car user = (id, name, secret, public_key, created_at, last_activity_at)
         if not security.argon2_verify_password(password, verif_mdp): # Fonction retourne True/False
             logger_server.warning(f"Tentative de connexion échouée pour : {pseudo}")
             sock_client.close()
@@ -104,10 +109,17 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     # ------------------------------------------------------------
     with clients_lock: # Section critique protégée
         # Ajout du client, de sa clé AES et de son pseudo dans le dictionnaire des clients connectés (contiendra des sockets + clés AES)
-        clients_connectes[addr] = (sock_client, aes_key, pseudo) # sock_client = connexion faite grâce à addr (ip, port), aes_key = clé de chiffrement symétrique partagée entre le serveur et ce client
+        clients_connectes[addr] = {
+            "sock": sock_client,
+            "aes_key": aes_key,
+            "pseudo": pseudo,
+            "id": user_id,
+            "public_key": public_key
+        }
+        # sock_client = connexion faite grâce à addr (ip, port), aes_key = clé de chiffrement symétrique partagée entre le serveur et ce client
     
     # Envoi à tous les clients d'un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter
-    event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True)
+    event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True, public_key)
     send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
 
     # ------------------------------------------------------------
@@ -120,7 +132,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         # Client déconnecté
         if not response:
             logger_server.info(f"{pseudo} déconnecté brutalement")
-            event_payload = event.build_user_updated(time.time(), pseudo, pseudo, False)
+            event_payload = event.build_user_updated(time.time(), pseudo, pseudo, False, public_key)
             send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
             break
         
@@ -142,17 +154,14 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         if exchange_type == exchange.ExchangeType.MESSAGE:
             # Parse du message (JSON → dictionnaire Python)
             parsed_msg = message.parse_message(plaindata)
-            # Récupération du user en database
-            user = data.get_user(parsed_msg["sender"]["name"])
-            # Ajout de l'id du sender dans le message parsé
-            parsed_msg["sender"]["id"] = user[0]
             # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
             if parsed_msg["recipient"]["type"] == "CHANNEL" :
                 data.add_channel_message(parsed_msg)
+                
             elif parsed_msg["recipient"]["type"] == "USER" :
                 data.add_private_message(parsed_msg)
             # Update la dernière activité de l'utilisateur
-            data.update_user_last_activity(user[0])
+            data.update_user_last_activity(clients_connectes[addr]["id"])
             # Appel de la fonction pour renvoyer le message à tous les clients
             send_msg_to_clients(parsed_msg, exchange_type, clients_connectes)
             
@@ -163,38 +172,71 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             # Vérification du type précis de l'instruction
             if parsed_statement["payload"]["name"] == "GET_USERS":
                 # Le serveur envoie à l'émetteur un événement USER_UPDATED pour chaque client connecté dans le dictionnaire
-                with clients_lock:
-                    for addr_loop, (client_sock_loop, client_key_loop, pseudo_loop) in clients_connectes.items():
-                        
-                        # Récupération des infos d'un user dans la liste des user connectés
-                        user = data.get_user(pseudo_loop)
-                        public_key = user[3] # Car user = (id, name, secret, public_key, created_at, last_activity_at)
-                        event_payload = event.build_user_updated(time.time(), pseudo_loop, pseudo_loop, True, public_key)
-                        
-                        # Envoi au client connecté actuel (qui a fait le GET_USERS)
-                        single_client = { addr: (sock_client, aes_key, pseudo) }
-                        send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, single_client)
+                for addr_loop, client_data_loop in clients_connectes.items():
+                    
+                    pseudo_loop = client_data_loop["pseudo"]
+                    public_key_loop = client_data_loop["public_key"]
+                    id_loop = client_data_loop["id"]
+
+                    event_payload = event.build_user_updated(time.time(), id_loop, pseudo_loop, True, public_key_loop)
+                    
+                    # Envoi au client connecté actuel (qui a fait le GET_USERS)
+                    single_client = { addr: { "sock": sock_client, "aes_key": aes_key }}
+                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, single_client)
 
             if parsed_statement["payload"]["name"] == "UPDATE_USER":
                 # Vérifie le status dans parsed_statement (True = connecté, False = déconnecté)
                 # et met à jour le dictionnaire des clients connectés en conséquence
                 
                 # Récupère le pseudo du client qui a envoyé l'instruction UPDATE_USER depuis le dictionnaire des clients connectés grâce à son adresse (addr)
-                pseudo = clients_connectes[addr][2] 
+                pseudo = clients_connectes[addr]["pseudo"]
+                user_id = clients_connectes[addr]["id"]
+                public_key = clients_connectes[addr]["public_key"]
 
                 # Ajoute le client au dictionnaire des clients connectés si status = True
                 if parsed_statement["payload"]["data"]["status"] == True:
                     with clients_lock:
-                        clients_connectes[addr] = (sock_client, aes_key, pseudo)
+                        clients_connectes[addr] = {
+                            "sock": sock_client,
+                            "aes_key": aes_key,
+                            "pseudo": pseudo,
+                            "id": user_id,
+                            "public_key": public_key
+                        }
                 # Supprime le client du dictionnaire des clients connectés si status = False
                 elif parsed_statement["payload"]["data"]["status"] == False:
                     with clients_lock:
                         del clients_connectes[addr]
                 
                 # Renvoie à tous les clients un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter ou de se déconnecter
-                event_payload = event.build_user_updated(parsed_statement["timestamp"], pseudo, pseudo, parsed_statement["payload"]["data"]["status"])
+                event_payload = event.build_user_updated(parsed_statement["timestamp"], user_id, pseudo, parsed_statement["payload"]["data"]["status"], public_key)
                 send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
 
+            if parsed_statement["payload"]["name"] == "CREATE_CHANNEL":
+                # Récupère l'id du client qui a envoyé l'instruction CREATE_CHANNEL depuis le dictionnaire des clients connectés grâce à son adresse (addr)
+                owner_id = clients_connectes[addr]["id"]
+                timestamp = parsed_statement["timestamp"]
+                channel_name = parsed_statement["payload"]["data"]["name"]
+                
+                # Vérifie que le channel n'existe pas déjà
+                if data.channel_exists(channel_name):
+                    logger_server.warning(f"Tentative de création de channel échouée : le channel {channel_name} existe déjà")
+                    continue 
+                
+                # Crée le channel en base de données
+                channel_id, channel_private_key, channel_public_key = data.add_channel(parsed_statement, owner_id)
+                # Ajoute le créateur du channel comme membre du channel en base de données
+                data.add_user_to_channel(owner_id, channel_id)
+                # Envoi au client qui a créé le channel un événement CHANNEL_CREATED (avec clé privée du channel)
+                event_payload_owner = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key, channel_private_key)
+                single_client = { addr: clients_connectes[addr]}
+                send_msg_to_clients(event_payload_owner, exchange.ExchangeType.EVENT, single_client)
+                # Envoi à tous les autres clients d'un événement CHANNEL_CREATED (sans clé privée du channel)
+                event_payload_others = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key)
+                other_clients = { k: v for k, v in clients_connectes.items() if k != addr } # Dictionnaire des autres clients que celui qui a créé le channel
+                send_msg_to_clients(event_payload_others, exchange.ExchangeType.EVENT, other_clients)
+
+                
     # ------------------------------------------------------------
     # DECONNEXION DU CLIENT
     # ------------------------------------------------------------

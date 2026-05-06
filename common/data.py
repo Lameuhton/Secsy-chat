@@ -14,6 +14,7 @@ DB_PATH = "database.db"
 def user_exists(name: str) -> bool:
     """
     Détermine l'existence d'un utilisateur sur base de son nom (pseudonyme)
+    
     :param name: le nom de l'utilisateur (pseudonyme)
     :return: `True` si un utilisateur existe sur base du nom fourni, sinon `False`
     """
@@ -30,9 +31,11 @@ def user_exists(name: str) -> bool:
 def create_user(name: str, hashed_password, public_key: str):
     '''
     Crée un tilisateur avec le pseudo et le mot de passe précédemment hashé et l'encode dans la base de donnée.
+    
     :param name: le nom de l'utilisateur (pseudonyme)
     :param hashed_password: mot de passe précédemment hashé
     :param public_key: clé publique de l'utilisateur
+    :return: l'id de l'utilisateur créé
     '''
 
     id = generate()
@@ -40,6 +43,7 @@ def create_user(name: str, hashed_password, public_key: str):
     connexion = database.connect_to_db(DB_PATH)
     database.insert_data(connexion,"user", ("id", "name", "secret", "public_key", "created_at", "last_activity_at"), (id, name, hashed_password, public_key, now, now))
     database.close_connection(connexion)
+    return id
 
 
 def get_user(name: str) -> tuple:
@@ -101,8 +105,9 @@ def update_user_last_activity(user_id: str):
 def get_last_channel_message(channel_id: str) -> List[Tuple]:
     """
     Récupère les derniers messages d'un channel à partir de son identifiant unique.
-     :param channel_id: l'identifiant unique du channel
-     :return: une liste de tuples contenant les informations des messages du channel.
+    
+    :param channel_id: l'identifiant unique du channel
+    :return: une liste de tuples contenant les informations des messages du channel.
 
              Structure des tuples retournés :
              (
@@ -128,6 +133,7 @@ def add_channel_message(message: dict):
     Cette fonction prend en entrée un dictionnaire représentant un message déjà
     validé (issu du parsing du JSON reçu). Elle extrait les informations
     nécessaires et les insère dans la table `channel_message`.
+    
     :param message: dictionnaire contenant les informations du message (format du return de parse_message)
     """
 
@@ -175,13 +181,15 @@ def add_channel_message(message: dict):
 
 #---------- Channel ------------
 
-def add_channel(channel: dict, owner_id):
+def add_channel(channel: dict, owner_id) -> Tuple[str, str, str]:
     """
     Cette fonction prend en entrée un dictionnaire représentant un channel déjà
     validé (issu du parsing du JSON reçu). Elle extrait les informations
     nécessaires et les insère dans la table `channel`.
+    
     :param channel: dictionnaire contenant les informations du channel (format du return des fonctions parse dans statement)
-    :owner_id: str - id du user qui a crée le channel   
+    :param owner_id: str - id du user qui a crée le channel
+    :return: un tuple contenant l'id du channel créé, sa clé privée et sa clé publique
     """
 
     channel_id = generate()
@@ -219,12 +227,32 @@ def add_channel(channel: dict, owner_id):
     )
     
     database.close_connection(connexion)
+    return (channel_id, channel_private_key, channel_public_key)
 
 #------------------- A FAIRE ------------------------
+def channel_exists(name: str) -> bool:
+    """
+    Détermine l'existence d'un channel sur base de son nom.
+
+    :param name: nom du channel
+    :return: True si le channel existe, sinon False
+    """
+
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+
+    cursor.execute("SELECT 1 FROM channel WHERE name = ?",(name,))
+
+    resultat = cursor.fetchall()
+
+    database.close_connection(connexion)
+
+    return bool(resultat)
 
 def user_exists_in_channel(user_id: str, channel_id: str) -> bool:
     """
-    Détermine l'existence d'un utilisateur dans un channel sur base de son id 
+    Détermine l'existence d'un utilisateur dans un channel sur base de son id
+    
     :param user_id: l'id de l'utilisateur
     :param channel_id : l'id du channel
     :return: `True` si un utilisateur existe sur base du nom fourni, sinon `False`
@@ -245,6 +273,7 @@ def add_user_to_channel(user_id: str, channel_id: str) -> None:
     Ajoute un utilisateur à un canal.
     Doit insérer une entrée dans la table `channel_member` avec la date d'ajout.
     Contraintes : Vérifier que l'utilisateur existe et que le canal existe | Éviter les doublons (vérfier si le user déjà membre)
+    
     :param user_id: Identifiant de l'utilisateur à ajouter
     :param channel_id: Identifiant du canal
     :return: None
@@ -280,6 +309,7 @@ def remove_user_from_channel(user_id: str, channel_id: str) -> None:
     Supprime un utilisateur d'un canal.
     Doit supprimer l'entrée correspondante dans `channel_member`.
     Contraintes : Vérifier que l'utilisateur est bien membre
+    
     :param user_id: Identifiant de l'utilisateur
     :param channel_id: Identifiant du canal
     :return: None
@@ -368,6 +398,7 @@ def add_private_message(message: dict):
     Cette fonction prend en entrée un dictionnaire représentant un message déjà
     validé (issu du parsing du JSON reçu). Elle extrait les informations
     nécessaires et les insère dans la table `private_message`.
+    
     :param message: dictionnaire contenant les informations du message (format du return de parse_message)
     """
 

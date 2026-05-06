@@ -19,9 +19,9 @@ def parse_event(payload: bytes):
 
     timestamp = data.get("timestamp")
     payload = data.get("payload", {})
-    payload_name = payload.get("name")
+    payload_name = payload.get("name") # type: ignore
 
-    payload_data = payload.get("data", {})
+    payload_data = payload.get("data", {}) # type: ignore
     
     if payload_name in ("CHANNEL_CREATED", "CHANNEL_JOINED"):
         parsed_data = parse_channel_created_joined(payload_data)
@@ -89,6 +89,33 @@ def build_user_updated(timestamp: float, user_id: str, name: str, status: bool, 
         }
     }
 
+def build_channel_created(timestamp: float, channel_id: str, channel_name: str, public_key: str, private_key: str = None) -> dict:
+    """
+    Construit un événement CHANNEL_CREATED standardisé.
+    
+    :param timestamp: timestamp de l'événement
+    :param channel_id: identifiant du channel créé
+    :param channel_name: nom du channel créé
+    :param public_key: clé publique du channel créé
+    :param private_key: clé privée du channel créé (optionnelle)
+    :return: dictionnaire de l'événement
+    """
+    data = {
+        "id": channel_id,
+        "name": channel_name,
+        "public_key": public_key
+    }
+
+    if private_key is not None:
+        data["private_key"] = private_key
+
+    return {
+        "timestamp": timestamp,
+        "payload": {
+            "name": "CHANNEL_CREATED",
+            "data": data
+        }
+    }
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
 # Ajoutez vos fonctions de parsing également
 
