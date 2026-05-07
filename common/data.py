@@ -348,10 +348,19 @@ def delete_channel(channel_id: str) -> None:
     - Supprimer automatiquement ses membres (CASCADE recommandé)
 
     Note :
-    Si la contrainte ON DELETE CASCADE est bien définie en DB,
-    pas besoin de supprimer manuellement dans `channel_member`.
+    Si ON DELETE CASCADE est bien configuré sur channel_member,
+    Rappel = contrainte définie directement dans la base de données (dans database.py, dans le CREATE TABLE channel_member)
+    SQLite supprimera automatiquement les membres du canal.
+    Sinon, ajouter manuellement :
+    cursor.execute("DELETE FROM channel_member WHERE channel_id = ?", (channel_id,))
     """
-
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("DELETE FROM channel WHERE id = ?", (channel_id,))
+    connexion.commit()
+    database.close_connection(connexion)
+    return None
+    
 def get_channel_owner(channel_id: str) -> str:
     """
     Récupère l'identifiant du propriétaire d'un canal.
