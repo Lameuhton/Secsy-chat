@@ -366,7 +366,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                     sender_name = clients_connectes[addr]["pseudo"]
                     sender_id = clients_connectes[addr]["id"]
                     # Vérifie que le l'expéditeur est bien le créateur du channel
-                    if not data.is_channel_owner(sender_id, channel_id):
+                    if not data.is_channel_owner(channel_id, sender_id):
                         logger_server.warning(f"Tentative de kick échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
                         continue
                     # Vérifie que le membre ciblé est bien membre du channel
@@ -392,7 +392,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                     channel_name = parsed_statement["payload"]["data"]["name"]
                     channel_id = channels[channel_name]["id"]
                     # Vérifie que le l'expéditeur est bien le créateur du channel
-                    if not data.is_channel_owner(sender_id, channel_id):
+                    if not data.is_channel_owner(channel_id, sender_id):
                         logger_server.warning(f"Tentative de suppression échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
                         continue
                     # Récupère les infos des membres du channel pour envoyer un message de suppression

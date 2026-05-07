@@ -397,6 +397,7 @@ def remove_user_from_channel(user_id: str, channel_id: str) -> None:
 def get_user_channels(user_id: str) -> List[dict]:
     """
     Récupère tous les canaux dont un utilisateur est membre dans la base de données --> jointure entre `channel_member` et `channel`
+    
     :param user_id: Identifiant de l'utilisateur
     :return: Liste des canaux (dict)
     Exemple de retour :
@@ -419,20 +420,21 @@ def get_user_channels(user_id: str) -> List[dict]:
     else :    
         return None
     
-def get_channel_members(channel_id: str) -> List[dict]:
+def get_channel_members(channel_id: str) -> List[str]:
     """
     Récupère tous les membres d'un canal dans la base de données --> une jointure entre `channel_member` et `user`
+    
     :param channel_id: Identifiant du canal
-    :return: Liste des utilisateurs (dict)
+    :return: Liste des identifiants d'utilisateurs (list)
     """
     connexion = database.connect_to_db(DB_PATH)
     cursor = connexion.cursor()
-    cursor.execute("SELECT user.* FROM user JOIN channel_member ON user.id = channel_member.user_id WHERE channel_member.channel_id = ?", (channel_id,))
+    cursor.execute("SELECT user.id FROM user JOIN channel_member ON user.id = channel_member.user_id WHERE channel_member.channel_id = ?", (channel_id,))
     liste_members = cursor.fetchall()
     database.close_connection(connexion)
     if liste_members:
         # # Rappel = user = (id, name, secret, public_key, created_at, last_activity_at)
-        return [{"id": row[0], "name": row[1], "public_key": row[3]} for row in liste_members]
+        return [row[0] for row in liste_members]
     else :    
         return None
     
@@ -461,7 +463,7 @@ def delete_channel(channel_id: str) -> None:
     database.close_connection(connexion)
     return None
     
-def get_channel_owner(channel_id: str) -> str:
+def is_channel_owner(channel_id: str, user_id: str) -> bool:
     """
     Vérifie si un utilisateur est le propriétaire d'un canal.
 
@@ -480,9 +482,9 @@ def get_channel_owner(channel_id: str) -> str:
     channel_owner = cursor.fetchone() # Ici, on attend un seul résultat
     database.close_connection(connexion)
     if channel_owner:
-        return channel_owner[0] # [0] car fetchone() retourne un tuple — on veut juste le owner_id
+        return channel_owner[0] == user_id  # [0] car fetchone() retourne un tuple — on veut juste le owner_id
     else :
-        return None
+        return False
 
 # ---------- Messages privés (plus tard) ------------
 
