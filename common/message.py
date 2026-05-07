@@ -59,3 +59,35 @@ def parse_message(payload: bytes):
             "signature": ""
         }
     }
+    
+def build_message(data: dict, sender_name: str, recipient_name: str, recipient_type: str) -> dict:
+    """
+    Construit un message à partir d'un dictionnaire
+    
+    :param data: un dictionnaire contenant les informations nécessaires à la construction du message
+    :param sender_name: le nom de l'expéditeur
+    :param recipient_name: le nom du destinataire
+    :param recipient_type: le type du destinataire (user ou channel)
+    :return le message sous forme d'un dictionnaire ou d'un objet    
+    """
+    return {
+        "timestamp": data[1],
+        "sender": {
+            "id": data[2],
+            "name": sender_name
+            },
+        "recipient": {
+            "type": recipient_type,
+            "id": data[3],
+            "name": recipient_name
+            },
+        "payload": {
+            "cipher_text": data[4],
+            "cipher_text_size": data[5],
+            "cipher_text_encrypted_key": data[6]
+            },
+        "integrity": {
+            "checksum": data[7],
+            "signature": data[8]
+        }
+    }

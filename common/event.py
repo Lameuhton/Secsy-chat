@@ -116,6 +116,34 @@ def build_channel_created(timestamp: float, channel_id: str, channel_name: str, 
             "data": data
         }
     }
+
+def build_channel_joined(timestamp: float, channel_id: str, channel_name: str, public_key: str, private_key: str = None) -> dict:
+    """
+    Construit un événement CHANNEL_JOINED standardisé.
+    
+    :param timestamp: timestamp de l'événement
+    :param channel_id: identifiant du channel rejoint
+    :param channel_name: nom du channel rejoint
+    :param public_key: clé publique du channel rejoint
+    :param private_key: clé privée du channel rejoint (optionnelle)
+    :return: dictionnaire de l'événement
+    """
+    data = {
+        "id": channel_id,
+        "name": channel_name,
+        "public_key": public_key
+    }
+
+    if private_key is not None:
+        data["private_key"] = private_key
+    
+    return {
+        "timestamp": timestamp,
+        "payload": {
+            "name": "CHANNEL_JOINED",
+            "data": data
+        }
+    }
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
 # Ajoutez vos fonctions de parsing également
 

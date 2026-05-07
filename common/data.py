@@ -80,7 +80,28 @@ def get_user(name: str) -> tuple:
         return None
 
     return resultat
+
+def get_username(user_id: str) -> str:
+    """
+    Récupère le pseudonyme d'un utilisateur à partir de son identifiant unique.
+
+    :param user_id: l'identifiant unique de l'utilisateur
+    :return: le pseudonyme de l'utilisateur, ou `None` si inexistant
+    """
+
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("SELECT name FROM user WHERE id = ?", (user_id,))
+    resultat = cursor.fetchone()
     
+    database.close_connection(connexion)
+
+    if resultat is None:
+        return None
+    
+    # résultat est un tuple du style ("pseudo",) donc on prend le premier élément du tuple pour retourner juste le pseudo
+    return resultat[0] 
+
 def update_user_last_activity(user_id: str):
     """
     Met à jour le champ `last_activity_at` d’un utilisateur en base de données
@@ -254,7 +275,7 @@ def user_exists_in_channel(user_id: str, channel_id: str) -> bool:
     Détermine l'existence d'un utilisateur dans un channel sur base de son id
     
     :param user_id: l'id de l'utilisateur
-    :param channel_id : l'id du channel
+    :param channel_id: l'id du channel
     :return: `True` si un utilisateur existe sur base du nom fourni, sinon `False`
     """
     connexion = database.connect_to_db(DB_PATH) 
@@ -267,7 +288,31 @@ def user_exists_in_channel(user_id: str, channel_id: str) -> bool:
         return False
     else:
         return True
-    
+
+def verify_channel_secret(channel_id: str, secret: str) -> bool:
+    """
+    Vérifie si le secret fourni correspond au secret du channel.
+
+    :param channel_id: id du channel
+    :param secret: secret fourni par l'utilisateur
+    :return: True si le secret est correct, sinon False
+    """
+
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("SELECT secret FROM channel WHERE id = ?", (channel_id,))
+    resultat = cursor.fetchone()
+    database.close_connection(connexion)
+
+    # Channel inexistant
+    if resultat is None:
+        return False
+
+    channel_secret = resultat[0]
+
+    # Vérification du secret
+    return channel_secret == secret
+
 def add_user_to_channel(user_id: str, channel_id: str) -> None:
     """
     Ajoute un utilisateur à un canal.

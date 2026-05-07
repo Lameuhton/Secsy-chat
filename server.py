@@ -17,6 +17,8 @@ logger_server = logging.getLogger(__name__)
 
 # Dictionnaire pour stocker les clients connectés (dictionnaire plutot que liste pour retrouver facilement adresse/client)
 clients_connectes = {}
+# Dictionnaire pour stocker les channels existants
+channels = {}
 # Verrou qui protègera clients_connectes
 clients_lock = Lock()
 
@@ -24,8 +26,10 @@ clients_lock = Lock()
 def send_msg_to_clients(plaindata: dict, exchange_type: exchange.ExchangeType, clients_dict):
     """
     Fonction pour renvoyer un message à tous les clients connectés. Le message est d'abord converti en JSON puis en bytes avant d'être chiffré et envoyé.
+    
     :param plaindata: le message en clair à renvoyer aux clients (dictionnaire Python)
     :param exchange_type: le type d'échange du message
+    :param clients_dict: le dictionnaire des clients à qui envoyer le message
     """
     try:
     # On utilise with comme ça le verrou se libère automatiquement à la fin du bloc, même en cas d'erreur (remplace le acquire et release)
@@ -156,6 +160,13 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             parsed_msg = message.parse_message(plaindata)
             # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
             if parsed_msg["recipient"]["type"] == "CHANNEL" :
+                # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
+                if not data.channel_exists(parsed_msg["recipient"]["id"]):
+                    logger_server.warning(f"Tentative d'envoi de message échouée : le channel {parsed_msg['recipient']['id']} n'existe pas/plus")
+                    continue
+                elif not data.user_exists_in_channel(clients_connectes[addr]["id"], parsed_msg["recipient"]["id"]):
+                    logger_server.warning(f"Tentative d'envoi de message échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {parsed_msg['recipient']['id']}")
+                    continue
                 data.add_channel_message(parsed_msg)
                 
             elif parsed_msg["recipient"]["type"] == "USER" :
@@ -227,6 +238,12 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 channel_id, channel_private_key, channel_public_key = data.add_channel(parsed_statement, owner_id)
                 # Ajoute le créateur du channel comme membre du channel en base de données
                 data.add_user_to_channel(owner_id, channel_id)
+                # Stocke le channel dans le dictionnaire des channels existants
+                channels[channel_name] = {
+                    "id": channel_id,
+                    "private_key": channel_private_key,
+                    "public_key": channel_public_key
+                }
                 # Envoi au client qui a créé le channel un événement CHANNEL_CREATED (avec clé privée du channel)
                 event_payload_owner = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key, channel_private_key)
                 single_client = { addr: clients_connectes[addr]}
@@ -236,7 +253,47 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 other_clients = { k: v for k, v in clients_connectes.items() if k != addr } # Dictionnaire des autres clients que celui qui a créé le channel
                 send_msg_to_clients(event_payload_others, exchange.ExchangeType.EVENT, other_clients)
 
+            if parsed_statement["payload"]["name"] == "JOIN_CHANNEL":
                 
+                # Récupère le nom du channel et les infos de l'expéditeur
+                channel_name = parsed_statement["payload"]["data"]["name"]
+                user_id = clients_connectes[addr]["id"]
+                user_pseudo = clients_connectes[addr]["pseudo"]
+                # Vérifie que le channel existe
+                if not data.channel_exists(channel_name):
+                    logger_server.warning(f"Tentative de rejoindre un channel échouée : le channel {channel_name} n'existe pas/plus")
+                    continue
+                # Récupère l'id du channel
+                channel_id = channels[channel_name]["id"]
+                is_member = data.user_exists_in_channel(user_id, channel_id)
+                
+                # Vérifie si on a un champ "secret" dans les données de l'instruction
+                if "secret" in parsed_statement["payload"]["data"]:
+                    secret = parsed_statement["payload"]["data"]["secret"]
+                    
+                # Vérifie si l'utilisateur est déjà membre du channel
+                if is_member or data.verify_channel_secret(channel_id, secret):
+                    # Si déjà membre, construit CHANNEL_JOINED sans clé privée, sinon rajoute la clé + ajoute en db comme membre du channel
+                    if is_member:
+                        event_payload = event.build_channel_joined(parsed_statement["timestamp"], channel_id, channel_name, channels[channel_name]["public_key"])
+                    else:
+                        event_payload = event.build_channel_joined(parsed_statement["timestamp"], channel_id, channel_name, channels[channel_name]["public_key"], channels[channel_name]["private_key"])
+                        data.add_user_to_channel(user_id, channel_id)
+                    # Envoi de l'énévement CHANNEL_JOINED
+                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, {addr: clients_connectes[addr]})
+                    
+                    # Récupère les 20 derniers messages du channel
+                    last_messages = data.get_last_channel_message(channel_id, 20)
+                    # Envoie ces messages au client qui vient de rejoindre le channel
+                    for msg_data in last_messages:
+                        sender_name = data.get_username(msg_data[2])
+                        msg_payload = message.build_message(msg_data, sender_name, channel_name, "CHANNEL")
+                        single_client = { addr: clients_connectes[addr]}
+                        send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
+                else:
+                    logger_server.warning(f"Tentative de rejoindre un channel échouée : secret incorrect pour le channel {channel_name}")
+                    continue
+                    
     # ------------------------------------------------------------
     # DECONNEXION DU CLIENT
     # ------------------------------------------------------------
