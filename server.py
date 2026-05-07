@@ -331,6 +331,85 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                     single_client = { addr: clients_connectes[addr]}
                     send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
                     
+            if parsed_statement["payload"]["name"] == "GET_CHANNELS":
+                sender_id = clients_connectes[addr]["id"]
+                channels_list = data.get_user_channels(sender_id)
+                # Envoi CHANNEL_CREATED pour chaque channel au client qui a fait le GET_CHANNELS
+                for channel in channels_list:
+                    event_payload = event.build_channel_created(time.time(), channel["id"], channel["name"], channel["public_key"], channel["private_key"])
+                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
+            
+            if parsed_statement["payload"]["name"] in ("LEAVE_CHANNEL","KICK_CHANNEL_MEMBER","DELETE_CHANNEL"):
+                
+                # Si c'est une instruction LEAVE_CHANNEL,
+                # supprime l'utilisateur du channel en base de données
+                if parsed_statement["payload"]["name"] == "LEAVE_CHANNEL":
+                    channel_name = parsed_statement["payload"]["data"]["name"]
+                    channel_id = channels[channel_name]["id"]
+                    # Vérifie que l'utilisateur est membre du channel avant de le supprimer
+                    if not data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
+                        logger_server.warning(f"Tentative de quitter un channel échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
+                        continue
+                    # Supprime le membre du channel en base de données
+                    data.remove_user_from_channel(user_id, channel_id)
+                    # Construction CHANNEL_DELETED à envoyer à l'émetteur uniquement
+                    event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
+                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
+                    
+                # Si c'est une instruction KICK_CHANNEL_MEMBER,
+                # vérifie que l'utilisateur est le créateur du channel puis supprime le membre ciblé du channel en base de données
+                elif parsed_statement["payload"]["name"] == "KICK_CHANNEL_MEMBER":
+                    channel_name = parsed_statement["payload"]["data"]["channel_name"]
+                    channel_id = channels[channel_name]["id"]
+                    member_name = parsed_statement["payload"]["data"]["member_name"]
+                    member_id = data.get_user(member_name)[0]
+                    sender_name = clients_connectes[addr]["pseudo"]
+                    sender_id = clients_connectes[addr]["id"]
+                    # Vérifie que le l'expéditeur est bien le créateur du channel
+                    if not data.is_channel_owner(sender_id, channel_id):
+                        logger_server.warning(f"Tentative de kick échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
+                        continue
+                    # Vérifie que le membre ciblé est bien membre du channel
+                    if not data.user_exists_in_channel(member_id, channel_id):
+                        logger_server.warning(f"Tentative de kick échouée : l'utilisateur {member_name} n'est pas/plus membre du channel {channel_name}")
+                        continue
+                    # Récupère les infos des membres du channel pour envoyer un message de kick à tout le monde
+                    channel_members = data.get_channel_members(channel_id)
+                    # Supprime le membre ciblé du channel en base de données
+                    data.remove_user_from_channel(member_id, channel_id)
+                    # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
+                    event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name, member_id, member_name)
+                    # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
+                    for addr_loop, client_data_loop in clients_connectes.items():
+                        if client_data_loop["id"] in channel_members:
+                            send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
+                    
+                # Si c'est une instruction DELETE_CHANNEL,
+                # vérifie que l'utilisateur est le créateur du channel puis supprime le channel de la base de données
+                elif parsed_statement["payload"]["name"] == "DELETE_CHANNEL":
+                    sender_id = clients_connectes[addr]["id"]
+                    sender_name = clients_connectes[addr]["pseudo"]
+                    channel_name = parsed_statement["payload"]["data"]["name"]
+                    channel_id = channels[channel_name]["id"]
+                    # Vérifie que le l'expéditeur est bien le créateur du channel
+                    if not data.is_channel_owner(sender_id, channel_id):
+                        logger_server.warning(f"Tentative de suppression échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
+                        continue
+                    # Récupère les infos des membres du channel pour envoyer un message de suppression
+                    channel_members = data.get_channel_members(channel_id)
+                    # Supprime le channel de la base de données
+                    # (grâce au cascade, les messages et les membres associés sont aussi supprimés, donc pas besoin de faire des suppressions manuelles pour ces éléments)
+                    data.delete_channel(channel_id)
+                    # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
+                    event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
+                    # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
+                    for addr_loop, client_data_loop in clients_connectes.items():
+                        if client_data_loop["id"] in channel_members:
+                            send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
+                    
+                    # Supprime le channel du dictionnaire des channels existants
+                    del channels[channel_name]
+                    
     # ------------------------------------------------------------
     # DECONNEXION DU CLIENT
     # ------------------------------------------------------------

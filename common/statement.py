@@ -90,7 +90,7 @@ def parse_kick_channel_member(data: dict) -> dict:
     
 def parse_leave_channel(data: dict) -> dict:
     return {
-        "name": data.get("channel_name")
+        "name": data.get("name")
     }
     
 def parse_update_user(data: dict) -> dict:

@@ -410,12 +410,12 @@ def get_user_channels(user_id: str) -> List[dict]:
     ]
     """
 
-def get_channel_members(channel_id: str) -> List[dict]:
+def get_channel_members(channel_id: str) -> List[str]:
     """
     Récupère tous les membres d'un canal.
 
     :param channel_id: Identifiant du canal
-    :return: Liste des utilisateurs (dict)
+    :return: Liste des id des membres
 
     Doit faire une jointure entre `channel_member` et `user`.
     """
@@ -436,12 +436,15 @@ def delete_channel(channel_id: str) -> None:
     pas besoin de supprimer manuellement dans `channel_member`.
     """
 
-def get_channel_owner(channel_id: str) -> str:
+def is_channel_owner(channel_id: str, user_id: str) -> bool:
     """
-    Récupère l'identifiant du propriétaire d'un canal.
+    Vérifie si un utilisateur est le propriétaire d'un canal.
 
     :param channel_id: Identifiant du canal
-    :return: user_id du propriétaire
+    :param user_id: Identifiant de l'utilisateur
+    :return: True si l'utilisateur est le propriétaire, False sinon
+
+     Doit vérifier que le champ `owner_id` du canal correspond à l'id de l'utilisateur.
 
     Utile pour :
     - Vérifier les droits (kick, delete, etc.)

@@ -144,6 +144,35 @@ def build_channel_joined(timestamp: float, channel_id: str, channel_name: str, p
             "data": data
         }
     }
+
+def build_channel_deleted(timestamp: float, channel_id: str, channel_name: str, member_id: str = None, member_name: str = None) -> dict:
+    """
+    Construit un événement CHANNEL_DELETED standardisé.
+    
+    :param timestamp: timestamp de l'événement
+    :param channel_id: identifiant du channel supprimé
+    :param channel_name: nom du channel supprimé
+    :param member_id: identifiant du membre qui a supprimé le channel (optionnel)
+    :param member_name: nom du membre qui a supprimé le channel (optionnel)
+    :return: dictionnaire de l'événement
+    """
+    data = {
+        "id": channel_id,
+        "name": channel_name
+    }
+    
+    if member_id is not None:
+        data["member_id"] = member_id
+    if member_name is not None:
+        data["member_name"] = member_name
+        
+    return {
+        "timestamp": timestamp,
+        "payload": {
+            "name": "CHANNEL_DELETED",
+            "data": data
+        }
+    }
 # Ajoutez vos dictionnaires/data classes pour structurer les différents "data" possibles
 # Ajoutez vos fonctions de parsing également
 
