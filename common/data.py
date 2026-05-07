@@ -396,30 +396,46 @@ def remove_user_from_channel(user_id: str, channel_id: str) -> None:
 
 def get_user_channels(user_id: str) -> List[dict]:
     """
-    Récupère tous les canaux dont un utilisateur est membre.
-
+    Récupère tous les canaux dont un utilisateur est membre dans la base de données --> jointure entre `channel_member` et `channel`
     :param user_id: Identifiant de l'utilisateur
     :return: Liste des canaux (dict)
-
-    Doit faire une jointure entre `channel_member` et `channel`.
-
     Exemple de retour :
     [
         {"id": "...", "name": "..."},
         ...
     ]
     """
-
-def get_channel_members(channel_id: str) -> List[str]:
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    # Dans cette requête : On croise les deux tables pour récupérer les infos du canal pour chaque entrée 
+    # dans channel_member qui correspond à l'utilisateur.
+    cursor.execute("SELECT channel.* FROM channel JOIN channel_member ON channel.id = channel_member.channel_id WHERE channel_member.user_id = ?", (user_id,))
+    liste_channel = cursor.fetchall()
+    # Retourne une liste de tuples (un par canal), pas juste un seul résultat.
+    database.close_connection(connexion)
+    if liste_channel:
+        # Rappel - channel = (id, name, secret, private_key, public_key, created_at, owner_id)
+        return [{"id": row[0], "name": row[1], "public_key": row[4]} for row in liste_channel]
+    else :    
+        return None
+    
+def get_channel_members(channel_id: str) -> List[dict]:
     """
-    Récupère tous les membres d'un canal.
-
+    Récupère tous les membres d'un canal dans la base de données --> une jointure entre `channel_member` et `user`
     :param channel_id: Identifiant du canal
-    :return: Liste des id des membres
-
-    Doit faire une jointure entre `channel_member` et `user`.
+    :return: Liste des utilisateurs (dict)
     """
-
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("SELECT user.* FROM user JOIN channel_member ON user.id = channel_member.user_id WHERE channel_member.channel_id = ?", (channel_id,))
+    liste_members = cursor.fetchall()
+    database.close_connection(connexion)
+    if liste_members:
+        # # Rappel = user = (id, name, secret, public_key, created_at, last_activity_at)
+        return [{"id": row[0], "name": row[1], "public_key": row[3]} for row in liste_members]
+    else :    
+        return None
+    
 def delete_channel(channel_id: str) -> None:
     """
     Supprime un canal.
@@ -432,11 +448,20 @@ def delete_channel(channel_id: str) -> None:
     - Supprimer automatiquement ses membres (CASCADE recommandé)
 
     Note :
-    Si la contrainte ON DELETE CASCADE est bien définie en DB,
-    pas besoin de supprimer manuellement dans `channel_member`.
+    Si ON DELETE CASCADE est bien configuré sur channel_member,
+    Rappel = contrainte définie directement dans la base de données (dans database.py, dans le CREATE TABLE channel_member)
+    SQLite supprimera automatiquement les membres du canal.
+    Sinon, ajouter manuellement :
+    cursor.execute("DELETE FROM channel_member WHERE channel_id = ?", (channel_id,))
     """
-
-def is_channel_owner(channel_id: str, user_id: str) -> bool:
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("DELETE FROM channel WHERE id = ?", (channel_id,))
+    connexion.commit()
+    database.close_connection(connexion)
+    return None
+    
+def get_channel_owner(channel_id: str) -> str:
     """
     Vérifie si un utilisateur est le propriétaire d'un canal.
 
@@ -449,6 +474,15 @@ def is_channel_owner(channel_id: str, user_id: str) -> bool:
     Utile pour :
     - Vérifier les droits (kick, delete, etc.)
     """
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("SELECT owner_id FROM channel WHERE id = ?", (channel_id,))
+    channel_owner = cursor.fetchone() # Ici, on attend un seul résultat
+    database.close_connection(connexion)
+    if channel_owner:
+        return channel_owner[0] # [0] car fetchone() retourne un tuple — on veut juste le owner_id
+    else :
+        return None
 
 # ---------- Messages privés (plus tard) ------------
 
