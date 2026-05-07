@@ -281,18 +281,55 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                         data.add_user_to_channel(user_id, channel_id)
                     # Envoi de l'énévement CHANNEL_JOINED
                     send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, {addr: clients_connectes[addr]})
-                    
-                    # Récupère les 20 derniers messages du channel
-                    last_messages = data.get_last_channel_message(channel_id, 20)
-                    # Envoie ces messages au client qui vient de rejoindre le channel
-                    for msg_data in last_messages:
-                        sender_name = data.get_username(msg_data[2])
-                        msg_payload = message.build_message(msg_data, sender_name, channel_name, "CHANNEL")
-                        single_client = { addr: clients_connectes[addr]}
-                        send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
                 else:
                     logger_server.warning(f"Tentative de rejoindre un channel échouée : secret incorrect pour le channel {channel_name}")
                     continue
+            
+            # Récupérer les 20 derniers messages privés concernant l'utilisteur
+            # + les 20 derniers messages du channel si "name" pas vide
+            if parsed_statement["payload"]["name"] == "GET_LAST_MESSAGES":
+                
+                last_messages = []
+                number = parsed_statement["payload"]["data"]["number"]
+                pseudo = clients_connectes[addr]["pseudo"]
+                
+                # Vérifie si le nom du channel est présent dans les données de l'instruction
+                if "channel_name" in parsed_statement["payload"]["data"]:
+                    channel_name = parsed_statement["payload"]["data"]["channel_name"]
+                    
+                    # Vérifie que le channel existe
+                    if data.channel_exists(channel_name):
+                        # S'il existe, récupère l'id du channel
+                        channel_id = channels[channel_name]["id"]
+                        # Vérifie que l'utilisateur est membre du channel,
+                        # si oui récupère les messages dans une variable
+                        if data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
+                            logger_server.info(f"Récupération des messages du channel {channel_name} pour {pseudo}")
+                            # Récupère les {number} derniers messages du channel
+                            last_messages = data.get_last_channel_message(channel_id, number)
+                        else:
+                            logger_server.warning(f"Tentative de récupération des messages échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
+                    else:
+                        logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
+                
+                # Récupère les {number} derniers messages privés concernant l'utilisateur
+                last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
+                # Trie les messages par timestamp pour afficher les plus récents en dernier
+                last_messages.sort(key=lambda x: x[1]) # Car x[1] = timestamp dans la structure des tuples retournés par get_last_channel_message
+                
+                # Envoie ces messages au client
+                for msg_data in last_messages:
+                    # Récupère les infos destinataire et expéditeur pour construire le message
+                    recipient_type = msg_data[-1]
+                    if recipient_type == "CHANNEL":
+                        recipient_name = data.get_channel_name(msg_data[3])
+                    elif recipient_type == "USER":
+                        recipient_name = data.get_username(msg_data[3])
+                    sender_name = data.get_username(msg_data[2])
+                    msg_payload = message.build_message(msg_data, sender_name, recipient_name, recipient_type)
+                    # Envoi du message au client
+                    single_client = { addr: clients_connectes[addr]}
+                    send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
                     
     # ------------------------------------------------------------
     # DECONNEXION DU CLIENT

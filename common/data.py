@@ -123,11 +123,12 @@ def update_user_last_activity(user_id: str):
 
 # ---------- Channel Message ------------
 
-def get_last_channel_message(channel_id: str) -> List[Tuple]:
+def get_last_channel_message(channel_id: str, limit: int = 20) -> List[Tuple]:
     """
     Récupère les derniers messages d'un channel à partir de son identifiant unique.
     
     :param channel_id: l'identifiant unique du channel
+    :param limit: le nombre maximum de messages à récupérer
     :return: une liste de tuples contenant les informations des messages du channel.
 
              Structure des tuples retournés :
@@ -140,12 +141,15 @@ def get_last_channel_message(channel_id: str) -> List[Tuple]:
                 payload_cipher_text_size,
                 payload_cipher_text_encrypted_key,
                 integrity_checksum,
-                integrity_signature
+                integrity_signature,
+                recipient_type (CHANNEL dans ce cas-ci)
              )
     """
 
     connexion = database.connect_to_db(DB_PATH)
-    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT 20", (channel_id,))
+    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT ?", (channel_id, limit))
+    # Rajoute à chaque tuple un champ supplémentaire qui indique que c'est un message channel (CHANNEL)
+    resultat = [tuple(list(row) + ["CHANNEL"]) for row in resultat]
     database.close_connection(connexion)
     return resultat
 
@@ -269,6 +273,27 @@ def channel_exists(name: str) -> bool:
     database.close_connection(connexion)
 
     return bool(resultat)
+
+def get_channel_name(channel_id: str) -> str:
+    """
+    Récupère le nom d'un channel à partir de son identifiant unique.
+
+    :param channel_id: l'identifiant unique du channel
+    :return: le nom du channel, ou `None` si inexistant
+    """
+
+    connexion = database.connect_to_db(DB_PATH)
+    cursor = connexion.cursor()
+    cursor.execute("SELECT name FROM channel WHERE id = ?", (channel_id,))
+    resultat = cursor.fetchone()
+    
+    database.close_connection(connexion)
+
+    if resultat is None:
+        return None
+    
+    # résultat est un tuple du style ("channel_name",) donc on prend le premier élément du tuple pour retourner juste le nom du channel
+    return resultat[0]
 
 def user_exists_in_channel(user_id: str, channel_id: str) -> bool:
     """
@@ -425,8 +450,26 @@ def get_channel_owner(channel_id: str) -> str:
 # ---------- Messages privés (plus tard) ------------
 
 def get_last_private_message(user_id: str) -> List[Tuple]:
-
-    # A changer plus tard
+    """
+    Récupère les derniers messages privés d'un utilisateur à partir de son identifiant unique.
+    
+    :param user_id: l'identifiant unique de l'utilisateur
+    :return: une liste de tuples contenant les informations des messages privés de l'utilisateur.
+                
+        Structure des tuples retournés :
+        (
+            id,
+            timestamp,
+            sender_id,
+            recipient_id,
+            payload_cipher_text,
+            payload_cipher_text_size,
+            payload_cipher_text_encrypted_key,
+            integrity_checksum,
+            integrity_signature,
+            recipient_type (USER dans ce cas-ci)
+        )
+    """
 
     connexion = database.connect_to_db(DB_PATH)
     cursor = connexion.cursor() # Crée un curseur (analogie du bibliothécaire)
@@ -434,6 +477,8 @@ def get_last_private_message(user_id: str) -> List[Tuple]:
     # Il y a "OR" car on prend autant les messages envoyés par Michel que ceux qu'il a reçus
     cursor.execute("SELECT * FROM private_message WHERE  sender_id = ? OR recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (user_id, user_id))
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
+    # Rajoute à chaque tuple un champ supplémentaire qui indique que c'est un message privé (USER)
+    resultat = [tuple(list(row) + ["USER"]) for row in resultat]
     database.close_connection(connexion)
     return resultat
 
