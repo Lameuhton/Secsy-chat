@@ -248,3 +248,27 @@ def chacha_decrypt(ciphertext_with_tag: bytes, key: bytes, nonce: bytes) -> byte
     chacha = ChaCha20Poly1305(key)
 
     return chacha.decrypt(nonce, ciphertext_with_tag, None)
+
+def decrypt_message(parsed_msg: dict, private_key: bytes) -> str:
+    """
+    Extrait les informations importantes d'un message reçu du serveur et les organise dans un format plus accessible.
+
+    :param parsed_msg: le message brut reçu du serveur sous forme de dictionnaire
+    :param private_key: la clé privée RSA pour le déchiffrement du payload
+    :return: le message déchiffré en clair
+    """
+    
+    # Récupération du payload chiffré et de la clé chiffrée
+    payload = parsed_msg["payload"]
+    full_ciphertext = bytes.fromhex(payload["cipher_text"])
+    encrypted_key = bytes.fromhex(payload["cipher_text_encrypted_key"])
+    # Séparer nonce et ciphertext+tag
+    nonce = full_ciphertext[:12]
+    ciphertext_with_tag = full_ciphertext[12:]
+    # Déchiffrer la clé symétrique ChaCha avec la clé privée du client (RSA)
+    chacha_key = rsa_decrypt(encrypted_key, private_key)
+    # Déchiffrer le message avec la clé symétrique ChaCha
+    plaintext = chacha_decrypt(ciphertext_with_tag, chacha_key, nonce)
+    # Convertir le plaintext en string pour l'afficher
+    message_str = plaintext.decode("utf-8")
+    return message_str

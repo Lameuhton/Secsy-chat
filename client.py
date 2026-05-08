@@ -225,23 +225,30 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
             if exchange_type == exchange.ExchangeType.MESSAGE:
                 # Parse du message (JSON → dictionnaire Python)
                 parsed_msg = message.parse_message(plaindata)
-                # Récupération du payload chiffré et de la clé chiffrée
-                payload = parsed_msg["payload"]
-                full_ciphertext = bytes.fromhex(payload["cipher_text"])
-                encrypted_key = bytes.fromhex(payload["cipher_text_encrypted_key"])
-                # Séparer nonce et ciphertext+tag
-                nonce = full_ciphertext[:12]
-                ciphertext_with_tag = full_ciphertext[12:]
-                # Déchiffrer la clé symétrique ChaCha avec la clé privée du client (RSA)
-                chacha_key = security.rsa_decrypt(encrypted_key, private_key)
-                # Déchiffrer le message avec la clé symétrique ChaCha
-                plaintext = security.chacha_decrypt(ciphertext_with_tag, chacha_key, nonce)
-                # Convertir le plaintext en string pour l'afficher
-                message_str = plaintext.decode("utf-8")
-                # Construction objet TuiMessage pour affichage dans l'interface
-                tui_msg = TuiMessage(sender_name=parsed_msg["sender"]["name"], message=message_str, timestamp=parsed_msg["timestamp"])
-                logger_client.info(f"Message reçu et affiché: {parsed_msg['sender']['name']} | {message_str}")
-            
+                time_stamp = parsed_msg["timestamp"]
+                sender_name = parsed_msg["sender"]["name"]
+                sender_id = parsed_msg["sender"]["id"]
+                recipient_type = parsed_msg["recipient"]["type"]
+                recipient_name = parsed_msg["recipient"]["name"]
+                
+                # Vérification si c'est un message channel ou privé
+                if recipient_type == "CHANNEL":
+                    # Si le message reçu concerne le canal actuellement sélectionné dans le contexte, on l'affiche dans l'interface
+                    if parsed_msg["recipient"]["id"] == context_data.get("context"):
+                        # On déchiffre et on construit le message
+                        message_str = security.decrypt_message(parsed_msg, channels[recipient_name]["private_key"])
+                        tui_msg = TuiMessage(timestamp=time_stamp, sender_name=sender_name, message=message_str, channel=recipient_name)
+                        q_inbound.put(tui_msg)
+                    else:
+                        continue
+                    
+                elif recipient_type == "USER":
+                    # On déchiffre et on construit le message
+                    message_str = security.decrypt_message(parsed_msg, private_key)
+                    # Construction objet TuiMessage pour affichage dans l'interface
+                    tui_msg = TuiMessage(timestamp=time_stamp, sender_name=sender_name, message=message_str)
+                    q_inbound.put(tui_msg)
+                
             elif exchange_type == exchange.ExchangeType.EVENT:
                 # Parse de l'évènement (JSON → dictionnaire Python)
                 parsed_event = event.parse_event(plaindata)
