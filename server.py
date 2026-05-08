@@ -158,6 +158,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         if exchange_type == exchange.ExchangeType.MESSAGE:
             # Parse du message (JSON → dictionnaire Python)
             parsed_msg = message.parse_message(plaindata)
+            
             # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
             if parsed_msg["recipient"]["type"] == "CHANNEL" :
                 # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
@@ -167,14 +168,22 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 elif not data.user_exists_in_channel(clients_connectes[addr]["id"], parsed_msg["recipient"]["id"]):
                     logger_server.warning(f"Tentative d'envoi de message échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {parsed_msg['recipient']['id']}")
                     continue
+                # Sauvegarde le message en base de données
                 data.add_channel_message(parsed_msg)
-                
+                # Récupère les membres du channel pour envoyer le message à tout le monde
+                channel_members = data.get_channel_members(parsed_msg["recipient"]["id"])
+                # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
+                for member_addr in channel_members:
+                    if member_addr in clients_connectes:
+                        send_msg_to_clients(parsed_msg, exchange_type, {member_addr: clients_connectes[member_addr]})
+                        
             elif parsed_msg["recipient"]["type"] == "USER" :
                 data.add_private_message(parsed_msg)
+                # A voir plus tard (itération messages privés)
+            
             # Update la dernière activité de l'utilisateur
             data.update_user_last_activity(clients_connectes[addr]["id"])
-            # Appel de la fonction pour renvoyer le message à tous les clients
-            send_msg_to_clients(parsed_msg, exchange_type, clients_connectes)
+
             
         elif exchange_type == exchange.ExchangeType.STATEMENT:
             # Parse de l'instruction (JSON → dictionnaire Python)
