@@ -261,7 +261,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     time_stamp = parsed_event["timestamp"]
                     name = parsed_event["payload"]["data"]["name"]
                     user_id = parsed_event["payload"]["data"]["id"]
-                    user_public_key = bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
+                    user_public_key = parsed_event["payload"]["data"]["public_key"].encode("utf-8")
                     status = parsed_event["payload"]["data"]["status"]
                         
                     # Vérification du status du tiers (actif ou inactif)
@@ -297,7 +297,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     
                     channel_name = parsed_event["payload"]["data"]["name"]
                     channel_id = parsed_event["payload"]["data"]["id"]
-                    channel_public_key =  bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
+                    channel_public_key =  parsed_event["payload"]["data"]["public_key"].encode("utf-8")
                     time_stamp = parsed_event["timestamp"]
                     
                     # Si le canal n'apparaissait pas dans la liste des canaux, il doit dorénavant y apparaitre
@@ -325,7 +325,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     
                     # Rajoute la canal dans le dictionnaire avec la clé privée si donnée
                     if "private_key" in parsed_event["payload"]["data"]:
-                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key, "private_key":  bytes.fromhex(parsed_event["payload"]["data"]["private_key"])}
+                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key, "private_key":  parsed_event["payload"]["data"]["private_key"].encode("utf-8")}
                     else:
                         channels[channel_name] = {"id": channel_id, "public_key": channel_public_key}
 
@@ -455,9 +455,6 @@ def main():
         print("Pseudo invalide (2-20 caractères alphanumériques)")
         sys.exit(1)
 
-    # Affection des chemins pour les clés
-    private_key_path = f"{pseudo}.key"
-
     password = getpass("Entrez votre mot de passe: ") # Pas de input pour pas qu'il soit marqué en "clair" dans l'interface utilisateur (on est en sécu quand-même...)
 
     # Initialisation de la queue pour les messages reçus à afficher dans l'interface
@@ -527,6 +524,9 @@ def main():
     # GENERATION RSA
     # -----------------------------------------------------------------
     
+    # Affection du chemin pour la clé privée
+    private_key_path = f"{pseudo}.key"
+    
     # Si la clé privée existe → on la charge
     if os.path.exists(private_key_path):
         with open(private_key_path, "rb") as f:
@@ -534,7 +534,7 @@ def main():
 
     # Sinon → on génère une paire de clé et on sauvegarde la privée et on envoie la publique au serveur
     else:
-        # Génération des clés
+        # Génération des clés (en bytes)
         private_key, public_key = security.rsa_generate_keypair()
 
         # Sauvegarde
@@ -571,7 +571,6 @@ def main():
     # Contiendra les id, name, clé publiques et optionnellement la clé privée (si on est membre) des channels pour cette session
     channels = {}
     
-    # Création dictionnaire
     # -------------------------------------------------
     # INSTRUCTIONS DE BASE AU SERVEUR
     # -------------------------------------------------

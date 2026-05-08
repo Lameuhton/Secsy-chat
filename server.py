@@ -100,7 +100,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     else:
         user = data.get_user(pseudo)
         user_id = user[0]
-        public_key = user[3]
+        public_key = user[3].encode('utf-8') # Car on l'avait stockée en str dans la base de données
         verif_mdp = user[2] # Car user = (id, name, secret, public_key, created_at, last_activity_at)
         if not security.argon2_verify_password(password, verif_mdp): # Fonction retourne True/False
             logger_server.warning(f"Tentative de connexion échouée pour : {pseudo}")
@@ -123,7 +123,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         # sock_client = connexion faite grâce à addr (ip, port), aes_key = clé de chiffrement symétrique partagée entre le serveur et ce client
     
     # Envoi à tous les clients d'un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter
-    event_payload = event.build_user_updated(time.time(), pseudo, pseudo, True, public_key)
+    event_payload = event.build_user_updated(time.time(), user_id, pseudo, True, public_key)
     send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
 
     # ------------------------------------------------------------
@@ -136,7 +136,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
         # Client déconnecté
         if not response:
             logger_server.info(f"{pseudo} déconnecté brutalement")
-            event_payload = event.build_user_updated(time.time(), pseudo, pseudo, False, public_key)
+            event_payload = event.build_user_updated(time.time(), user_id, pseudo, False, public_key)
             send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
             break
         
@@ -173,9 +173,9 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 # Récupère les membres du channel pour envoyer le message à tout le monde
                 channel_members = data.get_channel_members(parsed_msg["recipient"]["id"])
                 # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
-                for member_addr in channel_members:
-                    if member_addr in clients_connectes:
-                        send_msg_to_clients(parsed_msg, exchange_type, {member_addr: clients_connectes[member_addr]})
+                for addr_loop, client_data_loop in clients_connectes.items():
+                    if client_data_loop["id"] in channel_members:
+                        send_msg_to_clients(parsed_msg, exchange_type, {addr_loop: client_data_loop})
                         
             elif parsed_msg["recipient"]["type"] == "USER" :
                 data.add_private_message(parsed_msg)
@@ -243,7 +243,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                     logger_server.warning(f"Tentative de création de channel échouée : le channel {channel_name} existe déjà")
                     continue 
                 
-                # Crée le channel en base de données
+                # Crée le channel en base de données (retourne str, bytes, bytes)
                 channel_id, channel_private_key, channel_public_key = data.add_channel(parsed_statement, owner_id)
                 # Ajoute le créateur du channel comme membre du channel en base de données
                 data.add_user_to_channel(owner_id, channel_id)
@@ -276,6 +276,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 channel_id = channels[channel_name]["id"]
                 is_member = data.user_exists_in_channel(user_id, channel_id)
                 
+                secret = None
                 # Vérifie si on a un champ "secret" dans les données de l'instruction
                 if "secret" in parsed_statement["payload"]["data"]:
                     secret = parsed_statement["payload"]["data"]["secret"]

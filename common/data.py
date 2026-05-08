@@ -206,7 +206,7 @@ def add_channel_message(message: dict):
 
 #---------- Channel ------------
 
-def add_channel(channel: dict, owner_id) -> Tuple[str, str, str]:
+def add_channel(channel: dict, owner_id) -> Tuple[str, bytes, bytes]:
     """
     Cette fonction prend en entrée un dictionnaire représentant un channel déjà
     validé (issu du parsing du JSON reçu). Elle extrait les informations
@@ -221,8 +221,8 @@ def add_channel(channel: dict, owner_id) -> Tuple[str, str, str]:
     channel_name = channel["payload"]["data"]["name"]
     channel_secret = channel["payload"]["data"]["secret"]
     private_key, public_key = security.rsa_generate_keypair()
-    channel_private_key = private_key.hex()
-    channel_public_key = public_key.hex()
+    channel_private_key = private_key.decode('utf-8')
+    channel_public_key = public_key.decode('utf-8')
     channel_created_at = channel["timestamp"]
     channel_owner_id = owner_id 
     
@@ -252,7 +252,7 @@ def add_channel(channel: dict, owner_id) -> Tuple[str, str, str]:
     )
     
     database.close_connection(connexion)
-    return (channel_id, channel_private_key, channel_public_key)
+    return (channel_id, private_key, public_key)
 
 #------------------- A FAIRE ------------------------
 def channel_exists(name: str) -> bool:
@@ -416,9 +416,9 @@ def get_user_channels(user_id: str) -> List[dict]:
     database.close_connection(connexion)
     if liste_channel:
         # Rappel - channel = (id, name, secret, private_key, public_key, created_at, owner_id)
-        return [{"id": row[0], "name": row[1], "public_key": row[4]} for row in liste_channel]
+        return [{"id": row[0], "name": row[1], "public_key": row[4], "private_key": row[3]} for row in liste_channel]
     else :    
-        return None
+        return []
     
 def get_channel_members(channel_id: str) -> List[str]:
     """
@@ -436,7 +436,7 @@ def get_channel_members(channel_id: str) -> List[str]:
         # # Rappel = user = (id, name, secret, public_key, created_at, last_activity_at)
         return [row[0] for row in liste_members]
     else :    
-        return None
+        return []
     
 def delete_channel(channel_id: str) -> None:
     """

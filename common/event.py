@@ -65,7 +65,7 @@ def parse_user_updated(data: dict) -> dict:
         "status": data.get("status")
     }
 
-def build_user_updated(timestamp: float, user_id: str, name: str, status: bool, public_key: str) -> dict:
+def build_user_updated(timestamp: float, user_id: str, name: str, status: bool, public_key: bytes) -> dict:
     """
     Construit un événement USER_UPDATED standardisé.
     
@@ -73,6 +73,7 @@ def build_user_updated(timestamp: float, user_id: str, name: str, status: bool, 
     :param user_id: identifiant du user
     :param name: pseudo du user
     :param status: True (connecté) / False (déconnecté)
+    :param public_key: clé publique du user
     :return: dictionnaire de l'événement
     """
     
@@ -83,13 +84,13 @@ def build_user_updated(timestamp: float, user_id: str, name: str, status: bool, 
             "data": {
                 "id": user_id,
                 "name": name,
-                "public_key": public_key.hex(),
+                "public_key": public_key.decode('utf-8'),
                 "status": status
             }
         }
     }
 
-def build_channel_created(timestamp: float, channel_id: str, channel_name: str, public_key: str, private_key: str = None) -> dict:
+def build_channel_created(timestamp: float, channel_id: str, channel_name: str, public_key: bytes, private_key: bytes = None) -> dict:
     """
     Construit un événement CHANNEL_CREATED standardisé.
     
@@ -103,11 +104,11 @@ def build_channel_created(timestamp: float, channel_id: str, channel_name: str, 
     data = {
         "id": channel_id,
         "name": channel_name,
-        "public_key": public_key
+        "public_key": public_key.decode('utf-8')
     }
 
     if private_key is not None:
-        data["private_key"] = private_key
+        data["private_key"] = private_key.decode('utf-8')
 
     return {
         "timestamp": timestamp,
@@ -117,7 +118,7 @@ def build_channel_created(timestamp: float, channel_id: str, channel_name: str, 
         }
     }
 
-def build_channel_joined(timestamp: float, channel_id: str, channel_name: str, public_key: str, private_key: str = None) -> dict:
+def build_channel_joined(timestamp: float, channel_id: str, channel_name: str, public_key: bytes, private_key: bytes = None) -> dict:
     """
     Construit un événement CHANNEL_JOINED standardisé.
     
@@ -131,11 +132,11 @@ def build_channel_joined(timestamp: float, channel_id: str, channel_name: str, p
     data = {
         "id": channel_id,
         "name": channel_name,
-        "public_key": public_key
+        "public_key": public_key.decode('utf-8')
     }
 
     if private_key is not None:
-        data["private_key"] = private_key
+        data["private_key"] = private_key.decode('utf-8')   
     
     return {
         "timestamp": timestamp,
