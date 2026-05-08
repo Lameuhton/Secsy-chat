@@ -7,8 +7,9 @@ import json
 def parse_message(payload: bytes):
     """
     Lit et transforme la charge en message
-    :param payload la charge (payload) en bytes
-    :return le message sous forme d'un dictionnaire ou d'un objet
+    
+    :param payload: la charge (payload) en bytes
+    :return: le message sous forme d'un dictionnaire ou d'un objet
     """
 
     # Décodage bytes → string
@@ -60,34 +61,39 @@ def parse_message(payload: bytes):
         }
     }
     
-def build_message(data: dict, sender_name: str, recipient_name: str, recipient_type: str) -> dict:
+def build_message(timestamp: float, sender_id: str, sender_name: str, recipient_id: str, recipient_name: str, recipient_type: str, ct: str, ct_size: int, ct_ek: str) -> dict:
     """
     Construit un message à partir d'un dictionnaire
     
-    :param data: un dictionnaire contenant les informations nécessaires à la construction du message
+    :param timestamp: le timestamp du message
+    :param sender_id: l'identifiant de l'expéditeur
     :param sender_name: le nom de l'expéditeur
+    :param recipient_id: l'identifiant du destinataire
     :param recipient_name: le nom du destinataire
     :param recipient_type: le type du destinataire (user ou channel)
-    :return le message sous forme d'un dictionnaire ou d'un objet    
+    :param ct: le texte chiffré du message
+    :param ct_size: la taille du texte chiffré
+    :param ct_ek: la clé de chiffrement du texte chiffré
+    :return: le message sous forme d'un dictionnaire ou d'un objet    
     """
     return {
-        "timestamp": data[1],
+        "timestamp": timestamp,
         "sender": {
-            "id": data[2],
+            "id": sender_id,
             "name": sender_name
             },
         "recipient": {
             "type": recipient_type,
-            "id": data[3],
+            "id": recipient_id,
             "name": recipient_name
             },
         "payload": {
-            "cipher_text": data[4],
-            "cipher_text_size": data[5],
-            "cipher_text_encrypted_key": data[6]
+            "cipher_text": ct,
+            "cipher_text_size": ct_size,
+            "cipher_text_encrypted_key": ct_ek
             },
         "integrity": {
-            "checksum": data[7],
-            "signature": data[8]
+            "checksum": "",
+            "signature": ""
         }
     }

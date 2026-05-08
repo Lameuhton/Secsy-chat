@@ -33,7 +33,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, client_connectes: dict, channels: dict, context: str):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, client_connectes: dict, channels: dict, context_data: dict):
     """
     Traite les messages sortants et les renvoie au serveur.
     """
@@ -49,46 +49,141 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # - Sauvegarde dans une base de données
             # etc
             
-            message_str = msg.message
-            # Convertit le message en bytes pour le chiffrer
-            plaintext = message_str.encode("utf-8")
-            cipher_text_size = len(plaintext)
+            message_str = msg.message.strip()
             
-            # Génération d'une clé symétrique ChaCha (utilisé pour chiffrer le msg clair) à chaque msg 
-            # --> symétrique = + rapide
-            chacha_key = security.chacha_generate_key()
-            # Chiffrement du message avec ChaCha
-            nonce, ciphertext_with_tag = security.chacha_encrypt(plaintext, chacha_key)
-            full_ciphertext = nonce + ciphertext_with_tag
-            
-            recipient_public_key = client_connectes.get(msg.recipient_name, {}).get("public_key")
-            # Chiffrement asymétrique de la clé symétrique ChaCha par la clé publique du destinataire (RSA) --> chiffrement d'une clé de chiffrement
-            encrypted_key = security.rsa_encrypt(chacha_key, recipient_public_key)
+            # -------------------------------------------------
+            # COMMANDES
+            # -------------------------------------------------
+            if message_str.startswith("/"):
+                
+                parts = message_str.split()
+                command = parts[0].lower()
+                
+                # ---------------- JOIN ----------------
+                if command == "/join":
+                    # Vérification des arguments donnés
+                    if len(parts) < 2 or len(parts) > 3:
+                        logger_client.warning("Commande /join invalide. Usage: /join <channel_name> <optionnel: secret>")
+                        continue
+                    
+                    channel_name = parts[1]
+                    
+                    # Si un secret est donné, on l'inclut dans l'instruction JOIN_CHANNEL
+                    if len(parts) == 3:
+                        secret = parts[2]
+                        join_statement = statement.build_join_channel(channel_name, secret)
+                    else:
+                        join_statement = statement.build_join_channel(channel_name)
 
-            # Construction du message JSON
-            message_dict = {
-                "timestamp": msg.timestamp,
-                "sender": {
-                    "id": sender_id,
-                    "name": msg.sender_name,
-                },
-                "recipient": {
-                    "type": msg.sender_type, # On peut faire ça car sender_type est un Enum
-                    "id": "",
-                    "name": ""
-                },
-                "payload": {
-                    "cipher_text": full_ciphertext.hex(),  # On convertit en hex pour que ce soit du texte et pas des bytes
-                    "cipher_text_size": cipher_text_size, # Sera utilisé pour la partie intégrité du message (checksum)
-                    "cipher_text_encrypted_key": encrypted_key.hex()
-                },
-                "integrity": {
-                    "checksum": "",
-                    "signature": ""
-                }
-            }
-              
-            send_to_server(sock_client, aes_key, message_dict, exchange.ExchangeType.MESSAGE)
+                    # Envoi JOIN_CHANNEL au serveur
+                    send_to_server(sock_client, aes_key, join_statement, exchange.ExchangeType.STATEMENT)
+                    # Envoi GET_LAST_MESSAGES pour récupérer les derniers messages de ce channel
+                    get_last_messages_statement = statement.build_get_last_messages(channel_name, 20)
+                    send_to_server(sock_client, aes_key, get_last_messages_statement, exchange.ExchangeType.STATEMENT)
+                
+                # ---------------- NEW ----------------
+                elif command == "/new":
+                    
+                    # Vérification des arguments donnés
+                    if len(parts) != 3:
+                        logger_client.warning("Commande /new invalide. Usage: /new <channel_name> <secret>")
+                        continue
+                    
+                    channel_name = parts[1]
+                    secret = parts[2]
+                    
+                    # Construction CREATE_CHANNEL et envoi au serveur
+                    create_statement = statement.build_create_channel(channel_name, secret)
+                    send_to_server(sock_client, aes_key, create_statement, exchange.ExchangeType.STATEMENT)
+                    
+                # ---------------- LEAVE ----------------
+                elif command == "/leave":
+                    # Vérification des arguments donnés
+                    if len(parts) != 2:
+                        logger_client.warning("Commande /leave invalide. Usage: /leave <channel_name>")
+                        continue
+                    
+                    channel_name = parts[1]
+                    
+                    # Construction LEAVE_CHANNEL et envoi au serveur
+                    leave_statement = statement.build_leave_channel(channel_name)
+                    send_to_server(sock_client, aes_key, leave_statement, exchange.ExchangeType.STATEMENT)
+                
+                # ---------------- KICK ----------------
+                elif command == "/kick":
+                    # Vérification des arguments donnés
+                    if len(parts) != 3:
+                        logger_client.warning("Commande /kick invalide. Usage: /kick <channel_name> <user_name>")
+                        continue
+                    
+                    channel_name = parts[1]
+                    user_name = parts[2]
+                    
+                    # Construction KICK_CHANNEL_MEMBER et envoi au serveur
+                    kick_statement = statement.build_kick_channel_member(channel_name, user_name)
+                    send_to_server(sock_client, aes_key, kick_statement, exchange.ExchangeType.STATEMENT)
+
+                # ---------------- DELETE ----------------
+                elif command == "/delete":
+                    # Vérification des arguments donnés
+                    if len(parts) != 2:
+                        logger_client.warning("Commande /delete invalide. Usage: /delete <channel_name>")
+                        continue
+                    
+                    channel_name = parts[1]
+                    
+                    # Construction DELETE_CHANNEL et envoi au serveur
+                    delete_statement = statement.build_delete_channel(channel_name)
+                    send_to_server(sock_client, aes_key, delete_statement, exchange.ExchangeType.STATEMENT)
+
+                else:
+                    logger_client.warning(f"Commande inconnue: {command}")
+                    continue
+
+            # -------------------------------------------------
+            # MESSAGES CHANNEL
+            # -------------------------------------------------
+            else:
+            
+                # Vérification du contexte
+                context_id = context_data.get("context")
+                    
+                if not context_id:
+                    logger_client.warning("Aucun contexte de chat sélectionné pour l'envoi du message! Veuillez rejoindre un canal avant d'envoyer un message.")
+                    continue
+                    
+                # Récupération du nom du channel
+                channel_name = None
+                for name, info in channels.items():
+                    if info["id"] == context_id:
+                        channel_name = name
+                        break
+                if not channel_name:
+                    logger_client.warning(f"Contexte invalide: channel {context_id} introuvable.")
+                    continue
+                
+                # Chiffrement du message à envoyer
+                # Convertit le message en bytes pour le chiffrer
+                plaintext = message_str.encode("utf-8")
+                cipher_text_size = len(plaintext)
+            
+                # Génération d'une clé symétrique ChaCha (utilisé pour chiffrer le msg clair) à chaque msg 
+                # --> symétrique = + rapide
+                chacha_key = security.chacha_generate_key()
+                # Chiffrement du message avec ChaCha
+                nonce, ciphertext_with_tag = security.chacha_encrypt(plaintext, chacha_key)
+                full_ciphertext = nonce + ciphertext_with_tag
+                
+                recipient_public_key = channels[channel_name]["public_key"]
+                # Chiffrement asymétrique de la clé symétrique ChaCha par la clé publique du destinataire (RSA) --> chiffrement d'une clé de chiffrement
+                encrypted_key = security.rsa_encrypt(chacha_key, recipient_public_key)
+
+                # Construction du message à envoyer au serveur
+                sender_name = msg.sender_name
+                sender_id = client_connectes[sender_name]["id"]
+                
+                message_dict = message.build_message(msg.timestamp, sender_id, sender_name, context_id, channel_name, "CHANNEL", full_ciphertext.hex(), cipher_text_size, encrypted_key.hex())
+                send_to_server(sock_client, aes_key, message_dict, exchange.ExchangeType.MESSAGE)
 
         except Empty:
             # Timeout atteint, on reboucle pour vérifier is_shutdown
@@ -99,7 +194,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
 
-def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, client_connectes: dict, channels: dict, context: str):
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, client_connectes: dict, channels: dict, context_data: dict):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
     :param q_inbound: la queue pour les messages entrants à afficher dans l'interface
@@ -213,6 +308,10 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                         q_inbound.put(tui_channel_msg)
                     else:
                         # Changer le contexte ici
+                        context_data["context"] = channel_id
+                        with open(f"{tui.user_name}.json", "w", encoding="utf-8") as f:
+                            json.dump(context_data, f)
+                            
                         logger_client.info(f"{tui.user_name} - Canal rejoint: {channel_name}")
                         tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Vous avez rejoint le canal {channel_name}", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                         q_inbound.put(tui_channel_msg)
@@ -239,6 +338,10 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                             tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.DELETED_CHANNEL_EVENT)
                             q_inbound.put(tui_msg)
                             # Supprimer le contexte et le laisser vide
+                            context_data["context"] = ""
+                            with open(f"{tui.user_name}.json", "w", encoding="utf-8") as f:
+                                json.dump(context_data, f)
+                                
                             tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Vous avez été éjecté du canal {channel_name}", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                             q_inbound.put(tui_channel_msg)
                             # Retire le canal du dictionnaire des canaux
@@ -254,6 +357,10 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                         tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.DELETED_CHANNEL_EVENT)
                         q_inbound.put(tui_msg)
                         # Supprimer le contexte et le laisser vide
+                        context_data["context"] = ""
+                        with open(f"{tui.user_name}.json", "w", encoding="utf-8") as f:
+                            json.dump(context_data, f)
+                            
                         tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Le canal {channel_name} a été supprimé", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                         q_inbound.put(tui_channel_msg)
                         # Retire le canal du dictionnaire des canaux
@@ -435,7 +542,6 @@ def main():
     # -------------------------------------------------
     
     # Variable qui contiendra le contexte du chat
-    context = ""
     context_path = f"{pseudo}.json"
     
     # Si un contexte existe déjà pour ce pseudo, on le charge
@@ -451,7 +557,7 @@ def main():
         with open(context_path, "w", encoding="utf-8") as f:
             json.dump(context_data, f)
 
-    context = context_data["context"]
+    
     
     # Contiendra les id, name et clé publiques des utilisateurs connectés
     client_connectes = {}
@@ -472,7 +578,7 @@ def main():
     send_to_server(sock_client, aes_key, get_channels_statement, exchange.ExchangeType.STATEMENT)
     
     # Envoi d'une instruction GET_LAST_MESSAGES pour récupérer les 20 derniers messages du channel et privés
-    get_last_messages_statement = statement.build_get_last_messages(context, 20)
+    get_last_messages_statement = statement.build_get_last_messages(context_data["context"], 20)
     send_to_server(sock_client, aes_key, get_last_messages_statement, exchange.ExchangeType.STATEMENT)
    
     # ------------------------------------------------
@@ -489,7 +595,7 @@ def main():
         outbound_thread = Thread(
             target=handle_outbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants et aes
-            args=(q_outbound, sock_client, aes_key, client_connectes, channels, context),
+            args=(q_outbound, sock_client, aes_key, client_connectes, channels, context_data),
             daemon=True,
         )
         outbound_thread.start()
@@ -502,7 +608,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client, aes_key, tui, private_key, client_connectes, channels, context),
+            args=(q_inbound, sock_client, aes_key, tui, private_key, client_connectes, channels, context_data),
             daemon=True,
         )
         inbound_thread.start()

@@ -126,8 +126,140 @@ def build_get_users() -> dict:
     return {
         "timestamp": time.time(),
         "payload": {
-            "name": "GET_USERS",
-            "data": {}
+            "name": "GET_USERS"
+        }
+    }
+
+def build_get_channels() -> dict:
+    """
+    Construit une instruction GET_CHANNELS standardisée.
+    
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "GET_CHANNELS"
+        }
+    }
+    
+def build_get_last_messages(channel_name: str, number: int) -> dict:
+    """
+    Construit une instruction GET_LAST_MESSAGES standardisée.
+    
+    :param channel_name: nom du canal
+    :param number: nombre de messages à récupérer
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "GET_LAST_MESSAGES",
+            "data": {
+                "channel_name": channel_name,
+                "number": number
+            }
+        }
+    }
+
+def build_create_channel(name: str, secret: str) -> dict:
+    """
+    Construit une instruction CREATE_CHANNEL standardisée.
+    
+    :param name: nom du canal à créer
+    :param secret: mot de passe du canal
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "CREATE_CHANNEL",
+            "data": {
+                "name": name,
+                "secret": secret
+            }
+        }
+    }
+
+def build_delete_channel(name: str) -> dict:
+    """
+    Construit une instruction DELETE_CHANNEL standardisée.
+    
+    :param name: nom du canal à supprimer
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "DELETE_CHANNEL",
+            "data": {
+                "name": name
+            }
+        }
+    }
+
+def build_join_channel(name: str, secret: str = None) -> dict:
+    """
+    Construit une instruction JOIN_CHANNEL standardisée.
+    
+    :param name: nom du canal à rejoindre
+    :param secret: mot de passe du canal (optionnel)
+    :return: dictionnaire de l'instruction
+    """
+    data = {
+        "name": name
+    }
+    
+    if secret is not None:
+        data["secret"] = secret
+        
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "JOIN_CHANNEL",
+            "data": data
+        }
+    }
+
+def build_kick_channel_member(channel_name: str, member_name: str) -> dict:
+    """
+    Construit une instruction KICK_CHANNEL_MEMBER standardisée.
+    
+    :param channel_name: nom du canal
+    :param member_name: nom du membre à expulser
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "KICK_CHANNEL_MEMBER",
+            "data": {
+                "channel_name": channel_name,
+                "member_name": member_name
+            }
+        }
+    }
+
+def build_leave_channel(name: str) -> dict:
+    """
+    Construit une instruction LEAVE_CHANNEL standardisée.
+    
+    :param name: nom du canal à quitter
+    :return: dictionnaire de l'instruction
+    """
+ 
+    return {
+        "timestamp": time.time(),
+        "payload": {
+            "name": "LEAVE_CHANNEL",
+            "data": {
+                "name": name
+            }
         }
     }
 #

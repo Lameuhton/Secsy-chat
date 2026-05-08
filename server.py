@@ -313,7 +313,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                         logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
                 
                 # Récupère les {number} derniers messages privés concernant l'utilisateur
-                last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
+                # last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
                 # Trie les messages par timestamp pour afficher les plus récents en dernier
                 last_messages.sort(key=lambda x: x[1]) # Car x[1] = timestamp dans la structure des tuples retournés par get_last_channel_message
                 
@@ -326,7 +326,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                     elif recipient_type == "USER":
                         recipient_name = data.get_username(msg_data[3])
                     sender_name = data.get_username(msg_data[2])
-                    msg_payload = message.build_message(msg_data, sender_name, recipient_name, recipient_type)
+                    msg_payload = message.build_message(msg_data[1], msg_data[2], sender_name, msg_data[3], recipient_name, recipient_type, msg_data[4], msg_data[5], msg_data[6])
                     # Envoi du message au client
                     single_client = { addr: clients_connectes[addr]}
                     send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
