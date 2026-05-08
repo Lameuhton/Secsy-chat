@@ -25,7 +25,6 @@ import re #regex
 #PRIVATE_KEY_PATH = os.path.join(KEYS_DIR, "private.pem")
 #PUBLIC_KEY_PATH = os.path.join(KEYS_DIR, "public.pem")
 
-
 # CONFIGURATION DU LOGGER
 logging.basicConfig(
     filename="app_client.log",
@@ -402,11 +401,48 @@ def main():
         # Envoi de la clé publique au serveur pour qu'il puisse l'utiliser pour chiffrer les messages destinés à ce client
         network.send_message(sock_client, public_key)
     
+    # -------------------------------------------------
+    # CHARGEMENT CONTEXTE
+    # -------------------------------------------------
+    
+    # Variable qui contiendra le contexte du chat
+    context = ""
+    context_path = f"{pseudo}.json"
+    
+    # Si un contexte existe déjà pour ce pseudo, on le charge
+    if os.path.exists(context_path):
+        # Mode d'ouverture "r" pour read,
+        # on lit le fichier et on charge le contenu JSON
+        with open(context_path, "r", encoding="utf-8") as f:
+            context_data = json.load(f)
+    # Sinon, on crée le fichier avec un contexte vide
+    else:
+        context_data = {"context": ""}
+        # Mode d'ouvreture "w" pour write, on crée le fichier s'il n'existe pas
+        with open(context_path, "w", encoding="utf-8") as f:
+            json.dump(context_data, f)
+
+    context = context_data["context"]
+    # -------------------------------------------------
+    # INSTRUCTIONS DE BASE AU SERVEUR
+    # -------------------------------------------------
     
     # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et les afficher dans l'interface    
     get_users_statement = statement.build_get_users()
     send_to_server(sock_client, aes_key, get_users_statement, exchange.ExchangeType.STATEMENT)
-
+    
+    # Envoi d'une instruction GET_CHANNELS pour récupérer la liste des canaux dont l'utilisateur est membre
+    get_channels_statement = statement.build_get_channels()
+    send_to_server(sock_client, aes_key, get_channels_statement, exchange.ExchangeType.STATEMENT)
+    
+    # Envoi d'une instruction GET_LAST_MESSAGES pour récupérer les 20 derniers messages du channel et privés
+    get_last_messages_statement = statement.build_get_last_messages(context, 20)
+    send_to_server(sock_client, aes_key, get_last_messages_statement, exchange.ExchangeType.STATEMENT)
+   
+    # ------------------------------------------------
+    # LANCEMENT DES THREADS ET DE L'INTERFACE
+    # ------------------------------------------------
+    
     # Création et lancement de deux threads permettant de gérer les messages envoyés et reçus
     try:
         # Configuration du thread pour messages sortants :
