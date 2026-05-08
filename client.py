@@ -453,7 +453,7 @@ def main():
         outbound_thread = Thread(
             target=handle_outbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants et aes
-            args=(q_outbound, sock_client, aes_key, public_keys),
+            args=(q_outbound, sock_client, aes_key, public_keys, context),
             daemon=True,
         )
         outbound_thread.start()
@@ -466,7 +466,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client, aes_key, tui, private_key, public_keys),
+            args=(q_inbound, sock_client, aes_key, tui, private_key, public_keys, context),
             daemon=True,
         )
         inbound_thread.start()
