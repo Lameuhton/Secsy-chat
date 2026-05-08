@@ -33,7 +33,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, public_keys: dict):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, client_connectes: dict, channels: dict, context: str):
     """
     Traite les messages sortants et les renvoie au serveur.
     """
@@ -61,16 +61,15 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             nonce, ciphertext_with_tag = security.chacha_encrypt(plaintext, chacha_key)
             full_ciphertext = nonce + ciphertext_with_tag
             
-            recipient_public_key = public_keys.get(msg.recipient_name)
+            recipient_public_key = client_connectes.get(msg.recipient_name, {}).get("public_key")
             # Chiffrement asymétrique de la clé symétrique ChaCha par la clé publique du destinataire (RSA) --> chiffrement d'une clé de chiffrement
             encrypted_key = security.rsa_encrypt(chacha_key, recipient_public_key)
 
-                
             # Construction du message JSON
             message_dict = {
                 "timestamp": msg.timestamp,
                 "sender": {
-                    "id": msg.sender_name, 
+                    "id": sender_id,
                     "name": msg.sender_name,
                 },
                 "recipient": {
@@ -100,7 +99,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
 
-def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, public_keys: dict):
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, client_connectes: dict, channels: dict, context: str):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
     :param q_inbound: la queue pour les messages entrants à afficher dans l'interface
@@ -156,78 +155,110 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
 
                 # Si un utilisateur a été mis à jour
                 if parsed_event["payload"]["name"] == "USER_UPDATED":
-                    # Stockage de la clé publique de l'utilisateur dans le dictionnaire
-                    name = parsed_event["payload"]["data"]["name"]
-                    public_key_hex = parsed_event["payload"]["data"].get("public_key")
 
-                    if public_key_hex:
-                        public_keys[name] = bytes.fromhex(public_key_hex)
+                    time_stamp = parsed_event["timestamp"]
+                    name = parsed_event["payload"]["data"]["name"]
+                    user_id = parsed_event["payload"]["data"]["id"]
+                    user_public_key = bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
+                    status = parsed_event["payload"]["data"]["status"]
                         
                     # Vérification du status du tiers (actif ou inactif)
-                    if parsed_event["payload"]["data"]["status"] == False:
-                        logger_client.info(f"Utilisateur déconnecté: {parsed_event['payload']['data']['name']}")
+                    if status == False:
+                        logger_client.info(f"Utilisateur déconnecté: {name}")
+                        # Retire l'utilisateur du dictionnaire
+                        if name in client_connectes:
+                            del client_connectes[name]
                         # Construction de l'objet TuiMessage
-                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DISCONNECTED_USER_EVENT)
+                        tui_msg = TuiMessage(sender_name=name, message=f"{name}", timestamp=time_stamp, type=TuiMessageType.DISCONNECTED_USER_EVENT)
                         # Ajout du message à la queue
                         q_inbound.put(tui_msg)
                     else:
-                        logger_client.info(f"Utilisateur connecté: {parsed_event['payload']['data']['name']}")
+                        logger_client.info(f"Utilisateur connecté: {name}")
+                        # Rajoute l'utilisateur dans le dictionnaire s'il n'y est pas déjà
+                        if name not in client_connectes:
+                            client_connectes[name] = {"id": user_id, "public_key": user_public_key}
                         # Construction de l'objet TuiMessage        
-                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.CONNECTED_USER_EVENT)
+                        tui_msg = TuiMessage(sender_name=name, message=f"{name}", timestamp=time_stamp, type=TuiMessageType.CONNECTED_USER_EVENT)
                         # Ajout du message à la queue
                         q_inbound.put(tui_msg)
 
                     # Pour éviter d'afficher une notification de connexion/déconnexion pour soi-même
-                    if parsed_event["payload"]["data"]["name"] != tui.user_name:
-                        if parsed_event["payload"]["data"]["status"]:
-                            tui_system_msg = tui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est connecté")
+                    if name != tui.user_name:
+                        if status:
+                            tui_system_msg = tui.create_system_message(f"L'utilisateur {name} est connecté")
                         else:
-                            tui_system_msg = tui.create_system_message(f"L'utilisateur {parsed_event['payload']['data']['name']} est déconnecté")
+                            tui_system_msg = tui.create_system_message(f"L'utilisateur {name} est déconnecté")
                         q_inbound.put(tui_system_msg)
 
                 # Si un canal a été créé ou rejoint
                 if parsed_event["payload"]["name"] in ["CHANNEL_CREATED", "CHANNEL_JOINED"]:
                     
+                    channel_name = parsed_event["payload"]["data"]["name"]
+                    channel_id = parsed_event["payload"]["data"]["id"]
+                    channel_public_key =  bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
+                    time_stamp = parsed_event["timestamp"]
+                    
                     # Si le canal n'apparaissait pas dans la liste des canaux, il doit dorénavant y apparaitre
-                    if parsed_event["payload"]["data"]["name"] not in tui.channels:
+                    if channel_name not in tui.channels:
                         # Construction de l'objet TuiMessage
-                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.NEW_CHANNEL_EVENT)
+                        tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.NEW_CHANNEL_EVENT)
                         q_inbound.put(tui_msg)
 
                     # Affichage d'une notification spécifique selon que le canal a été créé ou rejoint
-                    if parsed_event["payload"]["data"]["name"] == "CHANNEL_CREATED":
-                        logger_client.info(f"Nouveau canal créé: {parsed_event['payload']['data']['name']}")
-                        tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Le canal {parsed_event['payload']['data']['name']} a été créé", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                    if parsed_event["payload"]["name"] == "CHANNEL_CREATED":
+                        # Ne pas changer le contexte ici 
+                        logger_client.info(f"Nouveau canal créé: {channel_name}")
+                        # Construction de l'objet TuiMessage
+                        tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Le canal {channel_name} a été créé", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                         q_inbound.put(tui_channel_msg)
                     else:
-                        logger_client.info(f"{tui.user_name} - Canal rejoint: {parsed_event['payload']['data']['name']}")
-                        tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Vous avez rejoint le canal {parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                        # Changer le contexte ici
+                        logger_client.info(f"{tui.user_name} - Canal rejoint: {channel_name}")
+                        tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Vous avez rejoint le canal {channel_name}", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                         q_inbound.put(tui_channel_msg)
+                    
+                    # Rajoute la canal dans le dictionnaire avec la clé privée si donnée
+                    if "private_key" in parsed_event["payload"]["data"]:
+                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key, "private_key":  bytes.fromhex(parsed_event["payload"]["data"]["private_key"])}
+                    else:
+                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key}
 
                 # Si un canal a été supprimé ou si un membre à été kick d'un canal
                 if parsed_event["payload"]["name"] == "CHANNEL_DELETED":
-                    # A faire plus tard: Adapter le contexte s'il pointait sur le cannal supprimé
-
-                    # Vérification si un id et name sont présents dans data (user kick)
-                    if parsed_event["payload"]["data"]["id"] and parsed_event["payload"]["data"]["name"]:
+                    
+                    time_stamp = parsed_event["timestamp"]
+                    channel_name = parsed_event["payload"]["data"]["name"]
+                    
+                    # Vérification si un member_id et member_name sont présents dans data (user kick)
+                    if parsed_event["payload"]["data"]["member_id"] and parsed_event["payload"]["data"]["member_name"]:
+                        member_id = parsed_event["payload"]["data"]["member_id"]
+                        member_name = parsed_event["payload"]["data"]["member_name"]
+                        
                         # Vérification si le membre éjecté est soi-même ou un autre membre du canal
-                        if parsed_event["payload"]["data"]["member_id"] == tui.user_name:
-                            tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DELETED_CHANNEL_EVENT)
+                        if member_name == tui.user_name:
+                            tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.DELETED_CHANNEL_EVENT)
                             q_inbound.put(tui_msg)
-                            # Plus tard - Changement de contexte
-                            tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Vous avez été éjecté du canal {parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                            # Supprimer le contexte et le laisser vide
+                            tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Vous avez été éjecté du canal {channel_name}", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                             q_inbound.put(tui_channel_msg)
+                            # Retire le canal du dictionnaire des canaux
+                            if channel_name in channels:
+                                del channels[channel_name]
                         else:
-                            logger_client.info(f"{parsed_event['payload']['data']['member_name']} a été éjecté du canal {parsed_event['payload']['data']['name']}")
-                            tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Le membre {parsed_event['payload']['data']['member_name']} a été éjecté du canal {parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                            # Ne pas supprimer le contexte
+                            tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Le membre {member_name} a été éjecté du canal {channel_name}", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                             q_inbound.put(tui_channel_msg)
-
+                            
+                    # Sinon, le canal a été supprimé
                     else:
-                        tui_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"{parsed_event['payload']['data']['name']}", timestamp=parsed_event["timestamp"], type=TuiMessageType.DELETED_CHANNEL_EVENT)
+                        tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.DELETED_CHANNEL_EVENT)
                         q_inbound.put(tui_msg)
-                        # Plus tard - Changement de contexte
-                        tui_channel_msg = TuiMessage(sender_name=parsed_event["payload"]["data"]["name"], message=f"Le canal {parsed_event['payload']['data']['name'] } a été supprimé", timestamp=parsed_event["timestamp"], sender_type=TuiMessageSenderType.CHANNEL)
+                        # Supprimer le contexte et le laisser vide
+                        tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Le canal {channel_name} a été supprimé", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
                         q_inbound.put(tui_channel_msg)
+                        # Retire le canal du dictionnaire des canaux
+                        if channel_name in channels:
+                            del channels[channel_name]
 
             else:
                 logger_client.warning(f"Type d'échange inconnu reçu: {exchange_type}")
@@ -315,8 +346,6 @@ def main():
 
     password = getpass("Entrez votre mot de passe: ") # Pas de input pour pas qu'il soit marqué en "clair" dans l'interface utilisateur (on est en sécu quand-même...)
 
-    # Initialisation du dictionnaire pour stocker les clés publiques des autres utilisateurs (pour chiffrer les messages qu'on leur envoie)
-    public_keys = {}
     # Initialisation de la queue pour les messages reçus à afficher dans l'interface
     try:
         q_inbound = Queue[TuiMessage]()
@@ -423,6 +452,13 @@ def main():
             json.dump(context_data, f)
 
     context = context_data["context"]
+    
+    # Contiendra les id, name et clé publiques des utilisateurs connectés
+    client_connectes = {}
+    # Contiendra les id, name, clé publiques et optionnellement la clé privée (si on est membre) des channels pour cette session
+    channels = {}
+    
+    # Création dictionnaire
     # -------------------------------------------------
     # INSTRUCTIONS DE BASE AU SERVEUR
     # -------------------------------------------------
@@ -453,7 +489,7 @@ def main():
         outbound_thread = Thread(
             target=handle_outbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants et aes
-            args=(q_outbound, sock_client, aes_key, public_keys, context),
+            args=(q_outbound, sock_client, aes_key, client_connectes, channels, context),
             daemon=True,
         )
         outbound_thread.start()
@@ -466,7 +502,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client, aes_key, tui, private_key, public_keys, context),
+            args=(q_inbound, sock_client, aes_key, tui, private_key, client_connectes, channels, context),
             daemon=True,
         )
         inbound_thread.start()
