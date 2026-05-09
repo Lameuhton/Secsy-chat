@@ -162,7 +162,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
             # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
             if parsed_msg["recipient"]["type"] == "CHANNEL" :
                 # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
-                if not data.channel_exists(parsed_msg["recipient"]["id"]):
+                if not data.channel_exists(parsed_msg["recipient"]["name"]):
                     logger_server.warning(f"Tentative d'envoi de message échouée : le channel {parsed_msg['recipient']['id']} n'existe pas/plus")
                     continue
                 elif not data.user_exists_in_channel(clients_connectes[addr]["id"], parsed_msg["recipient"]["id"]):
@@ -307,20 +307,22 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 if "channel_name" in parsed_statement["payload"]["data"]:
                     channel_name = parsed_statement["payload"]["data"]["channel_name"]
                     
-                    # Vérifie que le channel existe
-                    if data.channel_exists(channel_name):
-                        # S'il existe, récupère l'id du channel
-                        channel_id = channels[channel_name]["id"]
-                        # Vérifie que l'utilisateur est membre du channel,
-                        # si oui récupère les messages dans une variable
-                        if data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
-                            logger_server.info(f"Récupération des messages du channel {channel_name} pour {pseudo}")
-                            # Récupère les {number} derniers messages du channel
-                            last_messages = data.get_last_channel_message(channel_id, number)
+                    # Vérifie que le nom du channel n'est pas vide
+                    if channel_name:
+                        # Vérifie que le channel existe
+                        if data.channel_exists(channel_name):
+                            # S'il existe, récupère l'id du channel
+                            channel_id = channels[channel_name]["id"]
+                            # Vérifie que l'utilisateur est membre du channel,
+                            # si oui récupère les messages dans une variable
+                            if data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
+                                logger_server.info(f"Récupération des messages du channel {channel_name} pour {pseudo}")
+                                # Récupère les {number} derniers messages du channel
+                                last_messages = data.get_last_channel_message(channel_id, number)
+                            else:
+                                logger_server.warning(f"Tentative de récupération des messages échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
                         else:
-                            logger_server.warning(f"Tentative de récupération des messages échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
-                    else:
-                        logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
+                            logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
                 
                 # Récupère les {number} derniers messages privés concernant l'utilisateur
                 # last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
@@ -346,6 +348,13 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 channels_list = data.get_user_channels(sender_id)
                 # Envoi CHANNEL_CREATED pour chaque channel au client qui a fait le GET_CHANNELS
                 for channel in channels_list:
+                    # Ajout le channel dans le dictionnaire des channels
+                    channels[channel["name"]] = {
+                        "id": channel["id"],
+                        "private_key": channel["private_key"],
+                        "public_key": channel["public_key"]
+                    }
+                    # Construction puis envoi CHANNEL_CREATED
                     event_payload = event.build_channel_created(time.time(), channel["id"], channel["name"], channel["public_key"], channel["private_key"])
                     send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
             
