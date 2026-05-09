@@ -17,3 +17,6 @@ database.db
 
 # Clé privée
 *.key
+
+# Fichiers de configuration
+*.json

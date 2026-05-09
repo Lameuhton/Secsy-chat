@@ -147,7 +147,9 @@ def get_last_channel_message(channel_id: str, limit: int = 20) -> List[Tuple]:
     """
 
     connexion = database.connect_to_db(DB_PATH)
-    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT ?", (channel_id, limit))
+    cursor = connexion.cursor()
+    cursor.execute("SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT ?", (channel_id, limit))
+    resultat = cursor.fetchall()
     # Rajoute à chaque tuple un champ supplémentaire qui indique que c'est un message channel (CHANNEL)
     resultat = [tuple(list(row) + ["CHANNEL"]) for row in resultat]
     database.close_connection(connexion)
@@ -206,7 +208,7 @@ def add_channel_message(message: dict):
 
 #---------- Channel ------------
 
-def add_channel(channel: dict, owner_id) -> Tuple[str, bytes, bytes]:
+def add_channel(channel: dict, owner_id) -> Tuple[str, str, str]:
     """
     Cette fonction prend en entrée un dictionnaire représentant un channel déjà
     validé (issu du parsing du JSON reçu). Elle extrait les informations
@@ -221,8 +223,8 @@ def add_channel(channel: dict, owner_id) -> Tuple[str, bytes, bytes]:
     channel_name = channel["payload"]["data"]["name"]
     channel_secret = channel["payload"]["data"]["secret"]
     private_key, public_key = security.rsa_generate_keypair()
-    channel_private_key = private_key.decode('utf-8')
-    channel_public_key = public_key.decode('utf-8')
+    channel_private_key = private_key.hex()
+    channel_public_key = public_key.hex()
     channel_created_at = channel["timestamp"]
     channel_owner_id = owner_id 
     
@@ -252,7 +254,7 @@ def add_channel(channel: dict, owner_id) -> Tuple[str, bytes, bytes]:
     )
     
     database.close_connection(connexion)
-    return (channel_id, private_key, public_key)
+    return (channel_id, channel_private_key, channel_public_key)
 
 #------------------- A FAIRE ------------------------
 def channel_exists(name: str) -> bool:

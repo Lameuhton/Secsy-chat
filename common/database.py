@@ -140,10 +140,10 @@ def execute_seed(connection):
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS channel_member (
-            channel_id VARCHAR(21) NOT NULL, #peut avoir plusieur fois l'id du channel (si plusieur membres)
-            user_id VARCHAR(21) NOT NULL, #peut avoir plusieurs fois un nom (si 1 membre dans plsuieurs channels)
+            channel_id VARCHAR(21) NOT NULL,
+            user_id VARCHAR(21) NOT NULL,
             joined_at DATETIME NOT NULL,
-            PRIMARY KEY (channel_id, user_id), #seule la combinaison des deux doit être unique
+            PRIMARY KEY (channel_id, user_id),
             FOREIGN KEY (channel_id) REFERENCES channel(id),
             FOREIGN KEY (user_id) REFERENCES user(id)
             ON DELETE CASCADE

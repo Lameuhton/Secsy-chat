@@ -261,7 +261,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     time_stamp = parsed_event["timestamp"]
                     name = parsed_event["payload"]["data"]["name"]
                     user_id = parsed_event["payload"]["data"]["id"]
-                    user_public_key = parsed_event["payload"]["data"]["public_key"].encode("utf-8")
+                    user_public_key = bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
                     status = parsed_event["payload"]["data"]["status"]
                         
                     # Vérification du status du tiers (actif ou inactif)
@@ -297,7 +297,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     
                     channel_name = parsed_event["payload"]["data"]["name"]
                     channel_id = parsed_event["payload"]["data"]["id"]
-                    channel_public_key =  parsed_event["payload"]["data"]["public_key"].encode("utf-8")
+                    channel_public_key =  bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
                     time_stamp = parsed_event["timestamp"]
                     
                     # Si le canal n'apparaissait pas dans la liste des canaux, il doit dorénavant y apparaitre
@@ -325,7 +325,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     
                     # Rajoute la canal dans le dictionnaire avec la clé privée si donnée
                     if "private_key" in parsed_event["payload"]["data"]:
-                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key, "private_key":  parsed_event["payload"]["data"]["private_key"].encode("utf-8")}
+                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key, "private_key":  bytes.fromhex(parsed_event["payload"]["data"]["private_key"])}
                     else:
                         channels[channel_name] = {"id": channel_id, "public_key": channel_public_key}
 
@@ -542,7 +542,7 @@ def main():
             f.write(private_key)
             
         # Envoi de la clé publique au serveur pour qu'il puisse l'utiliser pour chiffrer les messages destinés à ce client
-        network.send_message(sock_client, public_key)
+        network.send_message(sock_client, public_key.hex().encode("utf-8"))
     
     # -------------------------------------------------
     # CHARGEMENT CONTEXTE

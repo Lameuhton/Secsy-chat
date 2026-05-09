@@ -93,14 +93,14 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     
     # Vérification de l'existence de l'utilisateur et du mot de passe
     if not data.user_exists(pseudo):
-        public_key = network.receive_message(sock_client)
+        public_key = network.receive_message(sock_client).decode('utf-8')
         hashed_password = security.argon2_hash_password(password)
-        user_id = data.create_user(pseudo, hashed_password, public_key.decode('utf-8'))
+        user_id = data.create_user(pseudo, hashed_password, public_key)
         logger_server.info(f"Nouvel utilisateur créé : {pseudo}")
     else:
         user = data.get_user(pseudo)
         user_id = user[0]
-        public_key = user[3].encode('utf-8') # Car on l'avait stockée en str dans la base de données
+        public_key = user[3]
         verif_mdp = user[2] # Car user = (id, name, secret, public_key, created_at, last_activity_at)
         if not security.argon2_verify_password(password, verif_mdp): # Fonction retourne True/False
             logger_server.warning(f"Tentative de connexion échouée pour : {pseudo}")
