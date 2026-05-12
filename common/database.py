@@ -142,6 +142,9 @@ def execute_seed(connection):
             FOREIGN KEY (sender_id) REFERENCES user(id) ON DELETE CASCADE
         )
     """)
+    #Si ON DELETE CASCADE est bien configuré sur channel_member,
+    #Rappel = contrainte définie directement dans la base de données (dans database.py, dans le CREATE TABLE channel_member)
+    #SQLite supprimera automatiquement les membres du canal.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS channel_member (
             channel_id VARCHAR(21) NOT NULL,
@@ -152,6 +155,8 @@ def execute_seed(connection):
             FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
         )
     """)
+
+
     # Plus tard (messages privés)
     # cursor.execute("""
     #     CREATE TABLE IF NOT EXISTS private_message (
