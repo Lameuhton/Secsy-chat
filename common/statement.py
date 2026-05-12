@@ -77,10 +77,14 @@ def parse_get_last_messages(data: dict) -> dict:
     }
 
 def parse_join_channel(data: dict) -> dict:
-    return {
-        "name": data.get("name"),
-        "secret": data.get("secret")
+    parsed = {
+        "name": data.get("name")
     }
+
+    if data.get("secret") is not None:
+        parsed["secret"] = data.get("secret")
+        
+    return parsed
 
 def parse_kick_channel_member(data: dict) -> dict:
     return {

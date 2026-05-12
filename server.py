@@ -452,7 +452,7 @@ def main():
     database.execute_seed(connection) # Crée la BD
     database.close_connection(connection) # Fermer la connexion
     
-    sock_server = network.start_tcp_server("127.0.0.1", 4000)
+    sock_server = network.start_tcp_server("0.0.0.0", 4000)
 
     # Génération des paramètres publics de Diffie-Hellman (p, g)
     # (une seule fois au lancement car sinon trop long de les recalculer à chaque client)
