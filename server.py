@@ -418,20 +418,17 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                         if not data.is_channel_owner(channel_id, sender_id):
                             logger_server.warning(f"Tentative de suppression échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
                             continue
-                        # Récupère les infos des membres du channel pour envoyer un message de suppression
-                        channel_members = data.get_channel_members(channel_id)
                         # Supprime le channel de la base de données
                         # (grâce au cascade, les messages et les membres associés sont aussi supprimés, donc pas besoin de faire des suppressions manuelles pour ces éléments)
                         data.delete_channel(channel_id)
-                        # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
+                        # Construction CHANNEL_DELETED à envoyer à tous les utilisateurs connectés
                         event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
                         # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
-                        for addr_loop, client_data_loop in clients_connectes.items():
-                            if client_data_loop["id"] in channel_members:
-                                send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
+                        send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
                         
                         # Supprime le channel du dictionnaire des channels existants
-                        del channels[channel_name]
+                        if channel_name in channels:
+                            del channels[channel_name]
 
     except ConnectionResetError:
         logger_server.info(f"Connexion fermée par le client {pseudo}")

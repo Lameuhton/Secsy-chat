@@ -361,19 +361,26 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                             
                     # Sinon, le canal a été supprimé
                     else:
-                        tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.DELETED_CHANNEL_EVENT)
-                        q_inbound.put(tui_msg)
-                        # Supprimer le contexte et le laisser vide
-                        context_data["context"] = ""
-                        with open(f"{tui.user_name}.json", "w", encoding="utf-8") as f:
-                            json.dump(context_data, f)
-                            
-                        tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Le canal {channel_name} a été supprimé", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
-                        q_inbound.put(tui_channel_msg)
-                        # Retire le canal du dictionnaire des canaux
+                        # Vérifier si le canal supprimé est dans le dictionnaire des canaux
                         if channel_name in channels:
-                            del channels[channel_name]
-
+                            # Vérification si le canal supprimé est le canal actuellement sélectionné dans le contexte
+                            if channels[channel_name]["id"] == context_data.get("context"):
+                                # Supprimer le contexte et le laisser vide
+                                context_data["context"] = ""
+                                with open(f"{tui.user_name}.json", "w", encoding="utf-8") as f:
+                                    json.dump(context_data, f)
+                            # Supprimer le canal de l'interface
+                            tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.DELETED_CHANNEL_EVENT)
+                            q_inbound.put(tui_msg)
+                            tui_channel_msg = TuiMessage(sender_name=channel_name, message=f"Le canal {channel_name} a été supprimé", timestamp=time_stamp, sender_type=TuiMessageSenderType.CHANNEL)
+                            q_inbound.put(tui_channel_msg)
+                            # Retire le canal du dictionnaire des canaux
+                            if channel_name in channels:
+                                del channels[channel_name]
+                        # Sinon ignorer le message
+                        else:
+                            continue        
+                        
             else:
                 logger_client.warning(f"Type d'échange inconnu reçu: {exchange_type}")
         
