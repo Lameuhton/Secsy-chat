@@ -590,8 +590,16 @@ def main():
     get_channels_statement = statement.build_get_channels()
     send_to_server(sock_client, aes_key, get_channels_statement, exchange.ExchangeType.STATEMENT)
     
+    # Récupération du nom du channel
+    channel_name = ""
+
+    for name, info in channels.items():
+        if info["id"] == context_data["context"]:
+            channel_name = name
+            break
+
     # Envoi d'une instruction GET_LAST_MESSAGES pour récupérer les 20 derniers messages du channel et privés
-    get_last_messages_statement = statement.build_get_last_messages(context_data["context"], 20)
+    get_last_messages_statement = statement.build_get_last_messages(channel_name, 20)
     send_to_server(sock_client, aes_key, get_last_messages_statement, exchange.ExchangeType.STATEMENT)
    
     # ------------------------------------------------
