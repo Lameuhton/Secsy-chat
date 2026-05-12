@@ -147,9 +147,7 @@ def get_last_channel_message(channel_id: str, limit: int = 20) -> List[Tuple]:
     """
 
     connexion = database.connect_to_db(DB_PATH)
-    cursor = connexion.cursor()
-    cursor.execute("SELECT * FROM channel_message WHERE recipient_id = ? ORDER BY timestamp DESC LIMIT ?", (channel_id, limit))
-    resultat = cursor.fetchall()
+    resultat = database.select_data(connexion, "SELECT * FROM channel_message WHERE recipient_id = '{channel_id}' ORDER BY timestamp DESC LIMIT 20")
     # Rajoute à chaque tuple un champ supplémentaire qui indique que c'est un message channel (CHANNEL)
     resultat = [tuple(list(row) + ["CHANNEL"]) for row in resultat]
     database.close_connection(connexion)
@@ -308,6 +306,7 @@ def user_exists_in_channel(user_id: str, channel_id: str) -> bool:
     connexion = database.connect_to_db(DB_PATH) 
     cursor = connexion.cursor()
     cursor.execute("SELECT 1 FROM channel_member WHERE user_id = ? AND channel_id = ?", (user_id, channel_id)) 
+    # SELECT 1 pour vérifier qu'une  ligne existe(plus performant que de récupérer les colonnes)
     # Rappel : Il y a une virgule après la requête SQL pourqu'il soit considéré comme un tuple (exécute utilise un tuple)
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
     database.close_connection(connexion)
