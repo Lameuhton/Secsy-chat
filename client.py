@@ -236,6 +236,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     # Si le message reçu concerne le canal actuellement sélectionné dans le contexte, on l'affiche dans l'interface
                     if parsed_msg["recipient"]["id"] == context_data.get("context"):
                         # On déchiffre et on construit le message
+                        
                         message_str = security.decrypt_message(parsed_msg, channels[recipient_name]["private_key"])
                         tui_msg = TuiMessage(timestamp=time_stamp, sender_name=sender_name, message=message_str, channel=recipient_name)
                         q_inbound.put(tui_msg)
@@ -306,6 +307,8 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                         tui_msg = TuiMessage(sender_name=channel_name, message=f"{channel_name}", timestamp=time_stamp, type=TuiMessageType.NEW_CHANNEL_EVENT)
                         q_inbound.put(tui_msg)
 
+                        
+
                     # Affichage d'une notification spécifique selon que le canal a été créé ou rejoint
                     if parsed_event["payload"]["name"] == "CHANNEL_CREATED":
                         # Ne pas changer le contexte ici 
@@ -324,10 +327,16 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                         q_inbound.put(tui_channel_msg)
                     
                     # Rajoute la canal dans le dictionnaire avec la clé privée si donnée
+                    if channel_name not in channels:
+                        channels[channel_name] = {}
+
+                    channels[channel_name]["id"] = channel_id
+                    channels[channel_name]["public_key"] = channel_public_key
+
                     if "private_key" in parsed_event["payload"]["data"]:
-                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key, "private_key":  bytes.fromhex(parsed_event["payload"]["data"]["private_key"])}
-                    else:
-                        channels[channel_name] = {"id": channel_id, "public_key": channel_public_key}
+                        channels[channel_name]["private_key"] = bytes.fromhex(
+                            parsed_event["payload"]["data"]["private_key"]
+                        )
 
                 # Si un canal a été supprimé ou si un membre à été kick d'un canal
                 if parsed_event["payload"]["name"] == "CHANNEL_DELETED":
