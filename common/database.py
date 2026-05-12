@@ -9,7 +9,11 @@ def connect_to_db(path: str) -> Connection:
     :return: la connection à la base de données
     """
     #NB: SQLite est une base de donnée stockée dans un simple fichier sur le disque
-    return connect(path)
+    connexion = connect(path)
+    # Active les contraintes de clés étrangères SQLite
+    connexion.execute("PRAGMA foreign_keys = ON")
+
+    return connexion
 
 def close_connection(connection: Connection):
     """
@@ -134,8 +138,8 @@ def execute_seed(connection):
             payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
             integrity_checksum VARCHAR(255) NOT NULL,
             integrity_signature TEXT(65535) NOT NULL,
-            FOREIGN KEY (recipient_id) REFERENCES channel(id),
-            FOREIGN KEY (sender_id) REFERENCES user(id)
+            FOREIGN KEY (recipient_id) REFERENCES channel(id) ON DELETE CASCADE,
+            FOREIGN KEY (sender_id) REFERENCES user(id) ON DELETE CASCADE
         )
     """)
     cursor.execute("""
@@ -144,9 +148,8 @@ def execute_seed(connection):
             user_id VARCHAR(21) NOT NULL,
             joined_at DATETIME NOT NULL,
             PRIMARY KEY (channel_id, user_id),
-            FOREIGN KEY (channel_id) REFERENCES channel(id),
-            FOREIGN KEY (user_id) REFERENCES user(id)
-            ON DELETE CASCADE
+            FOREIGN KEY (channel_id) REFERENCES channel(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
         )
     """)
     # Plus tard (messages privés)
