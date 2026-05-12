@@ -22,6 +22,9 @@ channels = {}
 # Verrou qui protègera clients_connectes
 clients_lock = Lock()
 
+# paramètres p, g de Diffie-Hellman
+dh_p = None
+dh_g = None
 
 def send_msg_to_clients(plaindata: dict, exchange_type: exchange.ExchangeType, clients_dict):
     """
@@ -60,17 +63,15 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     # ------------------------------------------------------------
     # Générer les paramètres de la clé publique
     # Envoi de p et g au client
-    logger_server.debug("Génération des paramètres publics Diffie-Hellman (p, g) - 2048 bits")
-    p, g = security.diffie_hellman_generate_public_parameters(2048)
-    logger_server.debug(f"Paramètres générés — envoi de p ({len(p.to_bytes(256, byteorder='big'))} bytes) et g au client {addr}")
-    network.send_message(sock_client, p.to_bytes(256, byteorder='big')) # 2048 bits // 8 = 256 bytes
-    network.send_message(sock_client, g.to_bytes(8, byteorder='big')) # Presque tjrs 2 ou 5 donc 8 bytes
+    logger_server.debug(f"Paramètres générés — envoi de p ({len(dh_p.to_bytes(256, byteorder='big'))} bytes) et g au client {addr}")
+    network.send_message(sock_client, dh_p.to_bytes(256, byteorder='big')) # 2048 bits // 8 = 256 bytes
+    network.send_message(sock_client, dh_g.to_bytes(8, byteorder='big')) # Presque tjrs 2 ou 5 donc 8 bytes
     logger_server.debug(f"p et g envoyés à {addr}")
 
     # Générer les clés et envoyer au client la publique
     logger_server.debug("Génération de la clé privée et publique du serveur")
-    private_key = security.diffie_hellman_generate_private_key(p)
-    public_key = security.diffie_hellman_compute_public_key(private_key, p, g)
+    private_key = security.diffie_hellman_generate_private_key(dh_p)
+    public_key = security.diffie_hellman_compute_public_key(private_key, dh_p, dh_g)
     network.send_message(sock_client, public_key.to_bytes(256, byteorder='big')) # Car send message envoie en bytes
     logger_server.debug(f"Clé publique du serveur envoyée à {addr}")
 
@@ -79,7 +80,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     peer_public_key = int.from_bytes(network.receive_message(sock_client), byteorder='big') # Clé publique du client != clé publ du serveur
     logger_server.debug(f"Clé publique reçue de {addr}")
     logger_server.debug("Calcul du secret partagé et dérivation de la clé AES (256 bits)")
-    shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, p)
+    shared_secret = security.diffie_hellman_compute_shared_secret(private_key, peer_public_key, dh_p)
     aes_key = security.diffie_hellman_derive_shared_key(shared_secret, 32)  # 32 bytes = 256 bits
     logger_server.info(f"Échange Diffie-Hellman terminé avec {addr} — clé AES établie")
 
@@ -447,6 +448,12 @@ def main():
     
     sock_server = network.start_tcp_server("127.0.0.1", 4000)
 
+    # Génération des paramètres publics de Diffie-Hellman (p, g)
+    # (une seule fois au lancement car sinon trop long de les recalculer à chaque client)
+    global dh_p, dh_g
+    logger_server.debug("Génération des paramètres publics Diffie-Hellman (p, g) - 2048 bits")
+    dh_p, dh_g = security.diffie_hellman_generate_public_parameters(2048)
+    logger_server.debug("Paramètres publics Diffie-Hellman générés")
 
     try:
         while True:
