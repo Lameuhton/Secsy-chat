@@ -42,12 +42,16 @@ def parse_event(payload: bytes):
     }
   
 def parse_channel_created_joined(data: dict) -> dict:
-    return {
+    parsed = {
         "id": data.get("id"),
         "name": data.get("name"),
-        "public_key": data.get("public_key"),
-        "private_key": data.get("private_key")
+        "public_key": data.get("public_key")
     }
+
+    if data.get("private_key") is not None:
+        parsed["private_key"] = data.get("private_key")
+
+    return parsed
 
 def parse_channel_deleted(data: dict) -> dict:
     return {
