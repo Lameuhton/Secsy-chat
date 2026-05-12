@@ -131,311 +131,320 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
     # GESTION DES MESSAGES RECUS
     # (RECEPTION, DECHIFFREMENT, RECHIFFREMENT, RENVOI)
     # ------------------------------------------------------------
-    while True:
-        response = network.receive_message(sock_client)
-        
-        # Client déconnecté
-        if not response:
-            logger_server.info(f"{pseudo} déconnecté brutalement")
-            event_payload = event.build_user_updated(time.time(), user_id, pseudo, False, public_key)
-            send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
-            break
-        
-        # Récupère le type et le contenu de l'échange
-        exchange_type = exchange.get_type(response)
-        exchange_content = exchange.get_payload(response)
-        
-        # Récupère le nonce, tag et ciphertext (ciphertext = notre message chiffré)
-        # Les tailles du nonce et du tag sont fixes (12 bytes pour le nonce et 16 bytes pour le tag en AES-GCM), donc on peut les découper facilement
-        # Le reste après le tag correspond au ciphertext
-        nonce = exchange_content[:12]
-        tag = exchange_content[12:28]
-        ciphertext = exchange_content[28:]
-        
-        # Déchiffre le message avec le nonce et le tag
-        plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
-        
-        # Vérification du type de message reçu (MESSAGE, STATEMENT ou EVENT)
-        if exchange_type == exchange.ExchangeType.MESSAGE:
-            # Parse du message (JSON → dictionnaire Python)
-            parsed_msg = message.parse_message(plaindata)
+    
+    # Try pour attraper les erreurs de connexion (client qui se déconnecte brutalement, etc.)
+    try:
+        while True:
+            response = network.receive_message(sock_client)
             
-            # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
-            if parsed_msg["recipient"]["type"] == "CHANNEL" :
-                # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
-                if not data.channel_exists(parsed_msg["recipient"]["name"]):
-                    logger_server.warning(f"Tentative d'envoi de message échouée : le channel {parsed_msg['recipient']['id']} n'existe pas/plus")
-                    continue
-                elif not data.user_exists_in_channel(clients_connectes[addr]["id"], parsed_msg["recipient"]["id"]):
-                    logger_server.warning(f"Tentative d'envoi de message échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {parsed_msg['recipient']['id']}")
-                    continue
-                # Sauvegarde le message en base de données
-                data.add_channel_message(parsed_msg)
-                # Récupère les membres du channel pour envoyer le message à tout le monde
-                channel_members = data.get_channel_members(parsed_msg["recipient"]["id"])
-                # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
-                for addr_loop, client_data_loop in clients_connectes.items():
-                    if client_data_loop["id"] in channel_members:
-                        send_msg_to_clients(parsed_msg, exchange_type, {addr_loop: client_data_loop})
-                        
-            elif parsed_msg["recipient"]["type"] == "USER" :
-                data.add_private_message(parsed_msg)
-                # A voir plus tard (itération messages privés)
-            
-            # Update la dernière activité de l'utilisateur
-            data.update_user_last_activity(clients_connectes[addr]["id"])
-
-            
-        elif exchange_type == exchange.ExchangeType.STATEMENT:
-            # Parse de l'instruction (JSON → dictionnaire Python)
-            parsed_statement = statement.parse_statement(plaindata)
-            
-            # Vérification du type précis de l'instruction
-            if parsed_statement["payload"]["name"] == "GET_USERS":
-                # Le serveur envoie à l'émetteur un événement USER_UPDATED pour chaque client connecté dans le dictionnaire
-                for addr_loop, client_data_loop in clients_connectes.items():
-                    
-                    pseudo_loop = client_data_loop["pseudo"]
-                    public_key_loop = client_data_loop["public_key"]
-                    id_loop = client_data_loop["id"]
-
-                    event_payload = event.build_user_updated(time.time(), id_loop, pseudo_loop, True, public_key_loop)
-                    
-                    # Envoi au client connecté actuel (qui a fait le GET_USERS)
-                    single_client = { addr: { "sock": sock_client, "aes_key": aes_key }}
-                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, single_client)
-
-            if parsed_statement["payload"]["name"] == "UPDATE_USER":
-                # Vérifie le status dans parsed_statement (True = connecté, False = déconnecté)
-                # et met à jour le dictionnaire des clients connectés en conséquence
-                
-                # Récupère le pseudo du client qui a envoyé l'instruction UPDATE_USER depuis le dictionnaire des clients connectés grâce à son adresse (addr)
-                pseudo = clients_connectes[addr]["pseudo"]
-                user_id = clients_connectes[addr]["id"]
-                public_key = clients_connectes[addr]["public_key"]
-
-                # Ajoute le client au dictionnaire des clients connectés si status = True
-                if parsed_statement["payload"]["data"]["status"] == True:
-                    with clients_lock:
-                        clients_connectes[addr] = {
-                            "sock": sock_client,
-                            "aes_key": aes_key,
-                            "pseudo": pseudo,
-                            "id": user_id,
-                            "public_key": public_key
-                        }
-                # Supprime le client du dictionnaire des clients connectés si status = False
-                elif parsed_statement["payload"]["data"]["status"] == False:
-                    with clients_lock:
-                        del clients_connectes[addr]
-                
-                # Renvoie à tous les clients un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter ou de se déconnecter
-                event_payload = event.build_user_updated(parsed_statement["timestamp"], user_id, pseudo, parsed_statement["payload"]["data"]["status"], public_key)
+            # Client déconnecté
+            if not response:
+                logger_server.info(f"{pseudo} déconnecté brutalement")
+                event_payload = event.build_user_updated(time.time(), user_id, pseudo, False, public_key)
                 send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
-
-            if parsed_statement["payload"]["name"] == "CREATE_CHANNEL":
-                # Récupère l'id du client qui a envoyé l'instruction CREATE_CHANNEL depuis le dictionnaire des clients connectés grâce à son adresse (addr)
-                owner_id = clients_connectes[addr]["id"]
-                timestamp = parsed_statement["timestamp"]
-                channel_name = parsed_statement["payload"]["data"]["name"]
-                
-                # Vérifie que le channel n'existe pas déjà
-                if data.channel_exists(channel_name):
-                    logger_server.warning(f"Tentative de création de channel échouée : le channel {channel_name} existe déjà")
-                    continue 
-                
-                # Crée le channel en base de données (retourne str, bytes, bytes)
-                channel_id, channel_private_key, channel_public_key = data.add_channel(parsed_statement, owner_id)
-                # Ajoute le créateur du channel comme membre du channel en base de données
-                data.add_user_to_channel(owner_id, channel_id)
-                # Stocke le channel dans le dictionnaire des channels existants
-                channels[channel_name] = {
-                    "id": channel_id,
-                    "private_key": channel_private_key,
-                    "public_key": channel_public_key
-                }
-                # Envoi au client qui a créé le channel un événement CHANNEL_CREATED (avec clé privée du channel)
-                event_payload_owner = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key, channel_private_key)
-                single_client = { addr: clients_connectes[addr]}
-                send_msg_to_clients(event_payload_owner, exchange.ExchangeType.EVENT, single_client)
-                # Envoi à tous les autres clients d'un événement CHANNEL_CREATED (sans clé privée du channel)
-                event_payload_others = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key)
-                other_clients = { k: v for k, v in clients_connectes.items() if k != addr } # Dictionnaire des autres clients que celui qui a créé le channel
-                send_msg_to_clients(event_payload_others, exchange.ExchangeType.EVENT, other_clients)
-
-            if parsed_statement["payload"]["name"] == "JOIN_CHANNEL":
-                
-                # Récupère le nom du channel et les infos de l'expéditeur
-                channel_name = parsed_statement["payload"]["data"]["name"]
-                user_id = clients_connectes[addr]["id"]
-                user_pseudo = clients_connectes[addr]["pseudo"]
-                # Vérifie que le channel existe
-                if not data.channel_exists(channel_name):
-                    logger_server.warning(f"Tentative de rejoindre un channel échouée : le channel {channel_name} n'existe pas/plus")
-                    continue
-                # Récupère l'id du channel
-                channel_id = channels[channel_name]["id"]
-                is_member = data.user_exists_in_channel(user_id, channel_id)
-                
-                secret = None
-                # Vérifie si on a un champ "secret" dans les données de l'instruction
-                if "secret" in parsed_statement["payload"]["data"]:
-                    secret = parsed_statement["payload"]["data"]["secret"]
-                    
-                # Vérifie si l'utilisateur est déjà membre du channel
-                if is_member or data.verify_channel_secret(channel_id, secret):
-                    # Si déjà membre, construit CHANNEL_JOINED sans clé privée, sinon rajoute la clé + ajoute en db comme membre du channel
-                    if is_member:
-                        event_payload = event.build_channel_joined(parsed_statement["timestamp"], channel_id, channel_name, channels[channel_name]["public_key"])
-                    else:
-                        event_payload = event.build_channel_joined(parsed_statement["timestamp"], channel_id, channel_name, channels[channel_name]["public_key"], channels[channel_name]["private_key"])
-                        data.add_user_to_channel(user_id, channel_id)
-                    # Envoi de l'énévement CHANNEL_JOINED
-                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, {addr: clients_connectes[addr]})
-                else:
-                    logger_server.warning(f"Tentative de rejoindre un channel échouée : secret incorrect pour le channel {channel_name}")
-                    continue
+                break
             
-            # Récupérer les 20 derniers messages privés concernant l'utilisteur
-            # + les 20 derniers messages du channel si "name" pas vide
-            if parsed_statement["payload"]["name"] == "GET_LAST_MESSAGES":
+            # Récupère le type et le contenu de l'échange
+            exchange_type = exchange.get_type(response)
+            exchange_content = exchange.get_payload(response)
+            
+            # Récupère le nonce, tag et ciphertext (ciphertext = notre message chiffré)
+            # Les tailles du nonce et du tag sont fixes (12 bytes pour le nonce et 16 bytes pour le tag en AES-GCM), donc on peut les découper facilement
+            # Le reste après le tag correspond au ciphertext
+            nonce = exchange_content[:12]
+            tag = exchange_content[12:28]
+            ciphertext = exchange_content[28:]
+            
+            # Déchiffre le message avec le nonce et le tag
+            plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
+            
+            # Vérification du type de message reçu (MESSAGE, STATEMENT ou EVENT)
+            if exchange_type == exchange.ExchangeType.MESSAGE:
+                # Parse du message (JSON → dictionnaire Python)
+                parsed_msg = message.parse_message(plaindata)
                 
-                last_messages = []
-                number = parsed_statement["payload"]["data"]["number"]
-                pseudo = clients_connectes[addr]["pseudo"]
+                # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
+                if parsed_msg["recipient"]["type"] == "CHANNEL" :
+                    # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
+                    if not data.channel_exists(parsed_msg["recipient"]["name"]):
+                        logger_server.warning(f"Tentative d'envoi de message échouée : le channel {parsed_msg['recipient']['id']} n'existe pas/plus")
+                        continue
+                    elif not data.user_exists_in_channel(clients_connectes[addr]["id"], parsed_msg["recipient"]["id"]):
+                        logger_server.warning(f"Tentative d'envoi de message échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {parsed_msg['recipient']['id']}")
+                        continue
+                    # Sauvegarde le message en base de données
+                    data.add_channel_message(parsed_msg)
+                    # Récupère les membres du channel pour envoyer le message à tout le monde
+                    channel_members = data.get_channel_members(parsed_msg["recipient"]["id"])
+                    # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
+                    for addr_loop, client_data_loop in clients_connectes.items():
+                        if client_data_loop["id"] in channel_members:
+                            send_msg_to_clients(parsed_msg, exchange_type, {addr_loop: client_data_loop})
+                            
+                elif parsed_msg["recipient"]["type"] == "USER" :
+                    data.add_private_message(parsed_msg)
+                    # A voir plus tard (itération messages privés)
                 
-                # Vérifie si le nom du channel est présent dans les données de l'instruction
-                if "channel_name" in parsed_statement["payload"]["data"]:
-                    channel_name = parsed_statement["payload"]["data"]["channel_name"]
+                # Update la dernière activité de l'utilisateur
+                data.update_user_last_activity(clients_connectes[addr]["id"])
+
+                
+            elif exchange_type == exchange.ExchangeType.STATEMENT:
+                # Parse de l'instruction (JSON → dictionnaire Python)
+                parsed_statement = statement.parse_statement(plaindata)
+                
+                # Vérification du type précis de l'instruction
+                if parsed_statement["payload"]["name"] == "GET_USERS":
+                    # Le serveur envoie à l'émetteur un événement USER_UPDATED pour chaque client connecté dans le dictionnaire
+                    for addr_loop, client_data_loop in clients_connectes.items():
+                        
+                        pseudo_loop = client_data_loop["pseudo"]
+                        public_key_loop = client_data_loop["public_key"]
+                        id_loop = client_data_loop["id"]
+
+                        event_payload = event.build_user_updated(time.time(), id_loop, pseudo_loop, True, public_key_loop)
+                        
+                        # Envoi au client connecté actuel (qui a fait le GET_USERS)
+                        single_client = { addr: { "sock": sock_client, "aes_key": aes_key }}
+                        send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, single_client)
+
+                if parsed_statement["payload"]["name"] == "UPDATE_USER":
+                    # Vérifie le status dans parsed_statement (True = connecté, False = déconnecté)
+                    # et met à jour le dictionnaire des clients connectés en conséquence
                     
-                    # Vérifie que le nom du channel n'est pas vide
-                    if channel_name:
-                        # Vérifie que le channel existe
-                        if data.channel_exists(channel_name):
-                            # S'il existe, récupère l'id du channel
-                            channel_id = channels[channel_name]["id"]
-                            # Vérifie que l'utilisateur est membre du channel,
-                            # si oui récupère les messages dans une variable
-                            if data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
-                                logger_server.info(f"Récupération des messages du channel {channel_name} pour {pseudo}")
-                                # Récupère les {number} derniers messages du channel
-                                last_messages = data.get_last_channel_message(channel_id, number)
-                            else:
-                                logger_server.warning(f"Tentative de récupération des messages échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
-                        else:
-                            logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
-                
-                # Récupère les {number} derniers messages privés concernant l'utilisateur
-                # last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
-                # Trie les messages par timestamp pour afficher les plus récents en dernier
-                last_messages.sort(key=lambda x: x[1]) # Car x[1] = timestamp dans la structure des tuples retournés par get_last_channel_message
-                
-                # Envoie ces messages au client
-                for msg_data in last_messages:
-                    # Récupère les infos destinataire et expéditeur pour construire le message
-                    recipient_type = msg_data[-1]
-                    if recipient_type == "CHANNEL":
-                        recipient_name = data.get_channel_name(msg_data[3])
-                    elif recipient_type == "USER":
-                        recipient_name = data.get_username(msg_data[3])
-                    sender_name = data.get_username(msg_data[2])
-                    msg_payload = message.build_message(msg_data[1], msg_data[2], sender_name, msg_data[3], recipient_name, recipient_type, msg_data[4], msg_data[5], msg_data[6])
-                    # Envoi du message au client
-                    single_client = { addr: clients_connectes[addr]}
-                    send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
+                    # Récupère le pseudo du client qui a envoyé l'instruction UPDATE_USER depuis le dictionnaire des clients connectés grâce à son adresse (addr)
+                    pseudo = clients_connectes[addr]["pseudo"]
+                    user_id = clients_connectes[addr]["id"]
+                    public_key = clients_connectes[addr]["public_key"]
+
+                    # Ajoute le client au dictionnaire des clients connectés si status = True
+                    if parsed_statement["payload"]["data"]["status"] == True:
+                        with clients_lock:
+                            clients_connectes[addr] = {
+                                "sock": sock_client,
+                                "aes_key": aes_key,
+                                "pseudo": pseudo,
+                                "id": user_id,
+                                "public_key": public_key
+                            }
+                    # Supprime le client du dictionnaire des clients connectés si status = False
+                    elif parsed_statement["payload"]["data"]["status"] == False:
+                        with clients_lock:
+                            del clients_connectes[addr]
                     
-            if parsed_statement["payload"]["name"] == "GET_CHANNELS":
-                sender_id = clients_connectes[addr]["id"]
-                channels_list = data.get_user_channels(sender_id)
-                # Envoi CHANNEL_CREATED pour chaque channel au client qui a fait le GET_CHANNELS
-                for channel in channels_list:
-                    # Ajout le channel dans le dictionnaire des channels
-                    channels[channel["name"]] = {
-                        "id": channel["id"],
-                        "private_key": channel["private_key"],
-                        "public_key": channel["public_key"]
+                    # Renvoie à tous les clients un événement USER_UPDATED avec le pseudo et le status du client qui vient de se connecter ou de se déconnecter
+                    event_payload = event.build_user_updated(parsed_statement["timestamp"], user_id, pseudo, parsed_statement["payload"]["data"]["status"], public_key)
+                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, clients_connectes)
+
+                if parsed_statement["payload"]["name"] == "CREATE_CHANNEL":
+                    # Récupère l'id du client qui a envoyé l'instruction CREATE_CHANNEL depuis le dictionnaire des clients connectés grâce à son adresse (addr)
+                    owner_id = clients_connectes[addr]["id"]
+                    timestamp = parsed_statement["timestamp"]
+                    channel_name = parsed_statement["payload"]["data"]["name"]
+                    
+                    # Vérifie que le channel n'existe pas déjà
+                    if data.channel_exists(channel_name):
+                        logger_server.warning(f"Tentative de création de channel échouée : le channel {channel_name} existe déjà")
+                        continue 
+                    
+                    # Crée le channel en base de données (retourne str, bytes, bytes)
+                    channel_id, channel_private_key, channel_public_key = data.add_channel(parsed_statement, owner_id)
+                    # Ajoute le créateur du channel comme membre du channel en base de données
+                    data.add_user_to_channel(owner_id, channel_id)
+                    # Stocke le channel dans le dictionnaire des channels existants
+                    channels[channel_name] = {
+                        "id": channel_id,
+                        "private_key": channel_private_key,
+                        "public_key": channel_public_key
                     }
-                    # Construction puis envoi CHANNEL_CREATED
-                    event_payload = event.build_channel_created(time.time(), channel["id"], channel["name"], channel["public_key"], channel["private_key"])
-                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
-            
-            if parsed_statement["payload"]["name"] in ("LEAVE_CHANNEL","KICK_CHANNEL_MEMBER","DELETE_CHANNEL"):
+                    # Envoi au client qui a créé le channel un événement CHANNEL_CREATED (avec clé privée du channel)
+                    event_payload_owner = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key, channel_private_key)
+                    single_client = { addr: clients_connectes[addr]}
+                    send_msg_to_clients(event_payload_owner, exchange.ExchangeType.EVENT, single_client)
+                    # Envoi à tous les autres clients d'un événement CHANNEL_CREATED (sans clé privée du channel)
+                    event_payload_others = event.build_channel_created(timestamp, channel_id, channel_name, channel_public_key)
+                    other_clients = { k: v for k, v in clients_connectes.items() if k != addr } # Dictionnaire des autres clients que celui qui a créé le channel
+                    send_msg_to_clients(event_payload_others, exchange.ExchangeType.EVENT, other_clients)
+
+                if parsed_statement["payload"]["name"] == "JOIN_CHANNEL":
+                    
+                    # Récupère le nom du channel et les infos de l'expéditeur
+                    channel_name = parsed_statement["payload"]["data"]["name"]
+                    user_id = clients_connectes[addr]["id"]
+                    user_pseudo = clients_connectes[addr]["pseudo"]
+                    # Vérifie que le channel existe
+                    if not data.channel_exists(channel_name):
+                        logger_server.warning(f"Tentative de rejoindre un channel échouée : le channel {channel_name} n'existe pas/plus")
+                        continue
+                    # Récupère l'id du channel
+                    channel_id = channels[channel_name]["id"]
+                    is_member = data.user_exists_in_channel(user_id, channel_id)
+                    
+                    secret = None
+                    # Vérifie si on a un champ "secret" dans les données de l'instruction
+                    if "secret" in parsed_statement["payload"]["data"]:
+                        secret = parsed_statement["payload"]["data"]["secret"]
+                        
+                    # Vérifie si l'utilisateur est déjà membre du channel
+                    if is_member or data.verify_channel_secret(channel_id, secret):
+                        # Si déjà membre, construit CHANNEL_JOINED sans clé privée, sinon rajoute la clé + ajoute en db comme membre du channel
+                        if is_member:
+                            event_payload = event.build_channel_joined(parsed_statement["timestamp"], channel_id, channel_name, channels[channel_name]["public_key"])
+                        else:
+                            event_payload = event.build_channel_joined(parsed_statement["timestamp"], channel_id, channel_name, channels[channel_name]["public_key"], channels[channel_name]["private_key"])
+                            data.add_user_to_channel(user_id, channel_id)
+                        # Envoi de l'énévement CHANNEL_JOINED
+                        send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, {addr: clients_connectes[addr]})
+                    else:
+                        logger_server.warning(f"Tentative de rejoindre un channel échouée : secret incorrect pour le channel {channel_name}")
+                        continue
                 
-                # Si c'est une instruction LEAVE_CHANNEL,
-                # supprime l'utilisateur du channel en base de données
-                if parsed_statement["payload"]["name"] == "LEAVE_CHANNEL":
-                    channel_name = parsed_statement["payload"]["data"]["name"]
-                    channel_id = channels[channel_name]["id"]
-                    # Vérifie que l'utilisateur est membre du channel avant de le supprimer
-                    if not data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
-                        logger_server.warning(f"Tentative de quitter un channel échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
-                        continue
-                    # Supprime le membre du channel en base de données
-                    data.remove_user_from_channel(user_id, channel_id)
-                    # Construction CHANNEL_DELETED à envoyer à l'émetteur uniquement
-                    event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
-                    send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
+                # Récupérer les 20 derniers messages privés concernant l'utilisteur
+                # + les 20 derniers messages du channel si "name" pas vide
+                if parsed_statement["payload"]["name"] == "GET_LAST_MESSAGES":
                     
-                # Si c'est une instruction KICK_CHANNEL_MEMBER,
-                # vérifie que l'utilisateur est le créateur du channel puis supprime le membre ciblé du channel en base de données
-                elif parsed_statement["payload"]["name"] == "KICK_CHANNEL_MEMBER":
-                    channel_name = parsed_statement["payload"]["data"]["channel_name"]
-                    channel_id = channels[channel_name]["id"]
-                    member_name = parsed_statement["payload"]["data"]["member_name"]
-                    member_id = data.get_user(member_name)[0]
-                    sender_name = clients_connectes[addr]["pseudo"]
+                    last_messages = []
+                    number = parsed_statement["payload"]["data"]["number"]
+                    pseudo = clients_connectes[addr]["pseudo"]
+                    
+                    # Vérifie si le nom du channel est présent dans les données de l'instruction
+                    if "channel_name" in parsed_statement["payload"]["data"]:
+                        channel_name = parsed_statement["payload"]["data"]["channel_name"]
+                        
+                        # Vérifie que le nom du channel n'est pas vide
+                        if channel_name:
+                            # Vérifie que le channel existe
+                            if data.channel_exists(channel_name):
+                                # S'il existe, récupère l'id du channel
+                                channel_id = channels[channel_name]["id"]
+                                # Vérifie que l'utilisateur est membre du channel,
+                                # si oui récupère les messages dans une variable
+                                if data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
+                                    logger_server.info(f"Récupération des messages du channel {channel_name} pour {pseudo}")
+                                    # Récupère les {number} derniers messages du channel
+                                    last_messages = data.get_last_channel_message(channel_id, number)
+                                else:
+                                    logger_server.warning(f"Tentative de récupération des messages échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
+                            else:
+                                logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
+                    
+                    # Récupère les {number} derniers messages privés concernant l'utilisateur
+                    # last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
+                    # Trie les messages par timestamp pour afficher les plus récents en dernier
+                    last_messages.sort(key=lambda x: x[1]) # Car x[1] = timestamp dans la structure des tuples retournés par get_last_channel_message
+                    
+                    # Envoie ces messages au client
+                    for msg_data in last_messages:
+                        # Récupère les infos destinataire et expéditeur pour construire le message
+                        recipient_type = msg_data[-1]
+                        if recipient_type == "CHANNEL":
+                            recipient_name = data.get_channel_name(msg_data[3])
+                        elif recipient_type == "USER":
+                            recipient_name = data.get_username(msg_data[3])
+                        sender_name = data.get_username(msg_data[2])
+                        msg_payload = message.build_message(msg_data[1], msg_data[2], sender_name, msg_data[3], recipient_name, recipient_type, msg_data[4], msg_data[5], msg_data[6])
+                        # Envoi du message au client
+                        single_client = { addr: clients_connectes[addr]}
+                        send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
+                        
+                if parsed_statement["payload"]["name"] == "GET_CHANNELS":
                     sender_id = clients_connectes[addr]["id"]
-                    # Vérifie que le l'expéditeur est bien le créateur du channel
-                    if not data.is_channel_owner(channel_id, sender_id):
-                        logger_server.warning(f"Tentative de kick échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
-                        continue
-                    # Vérifie que le membre ciblé est bien membre du channel
-                    if not data.user_exists_in_channel(member_id, channel_id):
-                        logger_server.warning(f"Tentative de kick échouée : l'utilisateur {member_name} n'est pas/plus membre du channel {channel_name}")
-                        continue
-                    # Récupère les infos des membres du channel pour envoyer un message de kick à tout le monde
-                    channel_members = data.get_channel_members(channel_id)
-                    # Supprime le membre ciblé du channel en base de données
-                    data.remove_user_from_channel(member_id, channel_id)
-                    # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
-                    event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name, member_id, member_name)
-                    # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
-                    for addr_loop, client_data_loop in clients_connectes.items():
-                        if client_data_loop["id"] in channel_members:
-                            send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
+                    channels_list = data.get_user_channels(sender_id)
+                    # Envoi CHANNEL_CREATED pour chaque channel au client qui a fait le GET_CHANNELS
+                    for channel in channels_list:
+                        # Ajout le channel dans le dictionnaire des channels
+                        channels[channel["name"]] = {
+                            "id": channel["id"],
+                            "private_key": channel["private_key"],
+                            "public_key": channel["public_key"]
+                        }
+                        # Construction puis envoi CHANNEL_CREATED
+                        event_payload = event.build_channel_created(time.time(), channel["id"], channel["name"], channel["public_key"], channel["private_key"])
+                        send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
+                
+                if parsed_statement["payload"]["name"] in ("LEAVE_CHANNEL","KICK_CHANNEL_MEMBER","DELETE_CHANNEL"):
                     
-                # Si c'est une instruction DELETE_CHANNEL,
-                # vérifie que l'utilisateur est le créateur du channel puis supprime le channel de la base de données
-                elif parsed_statement["payload"]["name"] == "DELETE_CHANNEL":
-                    sender_id = clients_connectes[addr]["id"]
-                    sender_name = clients_connectes[addr]["pseudo"]
-                    channel_name = parsed_statement["payload"]["data"]["name"]
-                    channel_id = channels[channel_name]["id"]
-                    # Vérifie que le l'expéditeur est bien le créateur du channel
-                    if not data.is_channel_owner(channel_id, sender_id):
-                        logger_server.warning(f"Tentative de suppression échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
-                        continue
-                    # Récupère les infos des membres du channel pour envoyer un message de suppression
-                    channel_members = data.get_channel_members(channel_id)
-                    # Supprime le channel de la base de données
-                    # (grâce au cascade, les messages et les membres associés sont aussi supprimés, donc pas besoin de faire des suppressions manuelles pour ces éléments)
-                    data.delete_channel(channel_id)
-                    # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
-                    event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
-                    # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
-                    for addr_loop, client_data_loop in clients_connectes.items():
-                        if client_data_loop["id"] in channel_members:
-                            send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
-                    
-                    # Supprime le channel du dictionnaire des channels existants
-                    del channels[channel_name]
+                    # Si c'est une instruction LEAVE_CHANNEL,
+                    # supprime l'utilisateur du channel en base de données
+                    if parsed_statement["payload"]["name"] == "LEAVE_CHANNEL":
+                        channel_name = parsed_statement["payload"]["data"]["name"]
+                        channel_id = channels[channel_name]["id"]
+                        # Vérifie que l'utilisateur est membre du channel avant de le supprimer
+                        if not data.user_exists_in_channel(clients_connectes[addr]["id"], channel_id):
+                            logger_server.warning(f"Tentative de quitter un channel échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {channel_name}")
+                            continue
+                        # Supprime le membre du channel en base de données
+                        data.remove_user_from_channel(user_id, channel_id)
+                        # Construction CHANNEL_DELETED à envoyer à l'émetteur uniquement
+                        event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
+                        send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr: clients_connectes[addr]})
+                        
+                    # Si c'est une instruction KICK_CHANNEL_MEMBER,
+                    # vérifie que l'utilisateur est le créateur du channel puis supprime le membre ciblé du channel en base de données
+                    elif parsed_statement["payload"]["name"] == "KICK_CHANNEL_MEMBER":
+                        channel_name = parsed_statement["payload"]["data"]["channel_name"]
+                        channel_id = channels[channel_name]["id"]
+                        member_name = parsed_statement["payload"]["data"]["member_name"]
+                        member_id = data.get_user(member_name)[0]
+                        sender_name = clients_connectes[addr]["pseudo"]
+                        sender_id = clients_connectes[addr]["id"]
+                        # Vérifie que le l'expéditeur est bien le créateur du channel
+                        if not data.is_channel_owner(channel_id, sender_id):
+                            logger_server.warning(f"Tentative de kick échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
+                            continue
+                        # Vérifie que le membre ciblé est bien membre du channel
+                        if not data.user_exists_in_channel(member_id, channel_id):
+                            logger_server.warning(f"Tentative de kick échouée : l'utilisateur {member_name} n'est pas/plus membre du channel {channel_name}")
+                            continue
+                        # Récupère les infos des membres du channel pour envoyer un message de kick à tout le monde
+                        channel_members = data.get_channel_members(channel_id)
+                        # Supprime le membre ciblé du channel en base de données
+                        data.remove_user_from_channel(member_id, channel_id)
+                        # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
+                        event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name, member_id, member_name)
+                        # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
+                        for addr_loop, client_data_loop in clients_connectes.items():
+                            if client_data_loop["id"] in channel_members:
+                                send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
+                        
+                    # Si c'est une instruction DELETE_CHANNEL,
+                    # vérifie que l'utilisateur est le créateur du channel puis supprime le channel de la base de données
+                    elif parsed_statement["payload"]["name"] == "DELETE_CHANNEL":
+                        sender_id = clients_connectes[addr]["id"]
+                        sender_name = clients_connectes[addr]["pseudo"]
+                        channel_name = parsed_statement["payload"]["data"]["name"]
+                        channel_id = channels[channel_name]["id"]
+                        # Vérifie que le l'expéditeur est bien le créateur du channel
+                        if not data.is_channel_owner(channel_id, sender_id):
+                            logger_server.warning(f"Tentative de suppression échouée : l'utilisateur {sender_name} n'est pas le créateur du channel {channel_name}")
+                            continue
+                        # Récupère les infos des membres du channel pour envoyer un message de suppression
+                        channel_members = data.get_channel_members(channel_id)
+                        # Supprime le channel de la base de données
+                        # (grâce au cascade, les messages et les membres associés sont aussi supprimés, donc pas besoin de faire des suppressions manuelles pour ces éléments)
+                        data.delete_channel(channel_id)
+                        # Construction CHANNEL_DELETED à envoyer à tous les membres du channel
+                        event_payload = event.build_channel_deleted(parsed_statement["timestamp"], channel_id, channel_name)
+                        # Boucle pour envoyer à tous les clients connectés dont l'id est dans channel_messages
+                        for addr_loop, client_data_loop in clients_connectes.items():
+                            if client_data_loop["id"] in channel_members:
+                                send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, { addr_loop: clients_connectes[addr_loop]})
+                        
+                        # Supprime le channel du dictionnaire des channels existants
+                        del channels[channel_name]
+
+    except ConnectionResetError:
+        logger_server.info(f"Connexion fermée par le client {pseudo}")
+    except Exception as e:
+        logger_server.error(f"Erreur avec le client {addr}: {e}", exc_info=True)
                     
     # ------------------------------------------------------------
     # DECONNEXION DU CLIENT
     # ------------------------------------------------------------
     # Déconnexion du client, on sort de la boucle et on ferme le socket
     with clients_lock:
-        del clients_connectes[addr]
+        if addr in clients_connectes:
+            del clients_connectes[addr]
     sock_client.close()
     logger_server.info(f"Client {addr} deconnecte, attente d'une nouvelle connexion...")
 
