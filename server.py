@@ -167,10 +167,10 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 if parsed_msg["recipient"]["type"] == "CHANNEL" :
                     # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
                     if not data.channel_exists(parsed_msg["recipient"]["name"]):
-                        logger_server.warning(f"Tentative d'envoi de message échouée : le channel {parsed_msg['recipient']['id']} n'existe pas/plus")
+                        logger_server.warning(f"Tentative d'envoi de message échouée : le channel {parsed_msg['recipient']['name']} n'existe pas/plus")
                         continue
                     elif not data.user_exists_in_channel(clients_connectes[addr]["id"], parsed_msg["recipient"]["id"]):
-                        logger_server.warning(f"Tentative d'envoi de message échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {parsed_msg['recipient']['id']}")
+                        logger_server.warning(f"Tentative d'envoi de message échouée : l'utilisateur {pseudo} n'est pas/plus membre du channel {parsed_msg['recipient']['name']}")
                         continue
                     # Sauvegarde le message en base de données
                     data.add_channel_message(parsed_msg)

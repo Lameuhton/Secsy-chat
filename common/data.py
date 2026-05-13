@@ -327,7 +327,7 @@ def verify_channel_secret(channel_id: str, secret: str) -> bool:
     connexion = database.connect_to_db(DB_PATH)
     cursor = connexion.cursor()
     cursor.execute("SELECT secret FROM channel WHERE id = ?", (channel_id,))
-    resultat = cursor.fetchone()
+    resultat = cursor.fetchone() # Ne renvoie jamais d'erreur, renvoie None si pas de résultat
     database.close_connection(connexion)
 
     # Channel inexistant
