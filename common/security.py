@@ -274,9 +274,76 @@ def decrypt_message(parsed_msg: dict, private_key: bytes) -> str:
     return message_str
     
 def generate_checksum(data: dict) -> str:
-    """
-    Génère une empreinte (checksum) d'un message pour vérifier son intégrité
+     """
+    Génère la somme de contrôle SHA-256 d'un message.
 
-    :param data: dictionnaire contenant les données du
-    :return: le checksum sous forme de string hexadécimal
+    La propriété "integrity" ne doit pas être prise en compte
+    dans le calcul de la somme de contrôle.
+
+    Le message est sérialisé de manière déterministe afin de garantir
+    que le checksum généré soit identique entre le client et le serveur.
+
+    :param message: le message dont il faut calculer la somme de contrôle
+    :return: la somme de contrôle SHA-256 du message sous forme hexadécimale
+    """
+    # Ne pas oublier de retirer la partie "integrity" du message avant de calculer le checksum
+    # Ensuite sérialiser le dictionnaire en JSON
+    # (ne pas oublier sort_keys=True pour garantir un ordre stable des clés, sinon le même message pourrait générer des checksums différents)
+
+def verify_checksum(message: dict, expected_checksum: str) -> bool:
+    """
+    Vérifie qu'une somme de contrôle correspond bien à celle
+    calculée à partir du message fourni.
+
+    :param message: le message à vérifier
+    :param expected_checksum: la somme de contrôle attendue
+    :return: True si les sommes correspondent, sinon False
+    """
+
+def sign_checksum(private_key: bytes, checksum: str) -> str:
+    """
+    Signe une somme de contrôle à l'aide d'une clé privée RSA.
+
+    La clé privée doit être fournie au format PEM encodé en bytes.
+
+    La signature retournée doit être encodée en Base64 afin
+    de pouvoir être sérialisée dans un document JSON.
+
+    :param private_key: la clé privée RSA au format PEM
+    :param checksum: la somme de contrôle à signer
+    :return: la signature encodée en Base64
+    """
+
+def verify_signature(public_key: bytes, checksum: str, signature: str) -> bool:
+    """
+    Vérifie qu'une signature RSA correspond bien à la somme
+    de contrôle fournie.
+
+    La clé publique doit être fournie au format PEM encodé en bytes.
+
+    La signature reçue est encodée en Base64 et doit donc être
+    décodée avant vérification.
+
+    :param public_key: la clé publique RSA au format PEM
+    :param checksum: la somme de contrôle originale
+    :param signature: la signature encodée en Base64
+    :return: True si la signature est valide, sinon False
+    """
+
+def validate_message_integrity(message: dict, public_key: bytes) -> bool:
+    """
+    Vérifie entièrement l'intégrité d'un message.
+
+    Cette validation comprend :
+    - la vérification de la signature RSA ;
+    - la vérification de la somme de contrôle SHA-256.
+
+    Si une des vérifications échoue, le message est considéré
+    comme invalide.
+
+    La clé publique doit être fournie au format PEM encodé en bytes.
+
+    :param message: le message à valider
+    :param public_key: la clé publique RSA de l'expéditeur
+    :return: True si l'intégrité du message est valide, sinon False
     """
