@@ -145,6 +145,7 @@ def execute_seed(connection):
     #Si ON DELETE CASCADE est bien configuré sur channel_member,
     #Rappel = contrainte définie directement dans la base de données (dans database.py, dans le CREATE TABLE channel_member)
     #SQLite supprimera automatiquement les membres du canal.
+    # seule la combinaisond de channel_id et user_id doit être unique 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS channel_member (
             channel_id VARCHAR(21) NOT NULL,

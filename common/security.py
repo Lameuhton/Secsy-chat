@@ -272,3 +272,11 @@ def decrypt_message(parsed_msg: dict, private_key: bytes) -> str:
     # Convertir le plaintext en string pour l'afficher
     message_str = plaintext.decode("utf-8")
     return message_str
+    
+def generate_checksum(data: dict) -> str:
+    """
+    Génère une empreinte (checksum) d'un message pour vérifier son intégrité
+
+    :param data: dictionnaire contenant les données du
+    :return: le checksum sous forme de string hexadécimal
+    """
