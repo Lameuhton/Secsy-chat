@@ -81,6 +81,18 @@ def get_user(name: str) -> tuple:
 
     return resultat
 
+def get_all_users() -> List[Tuple]:
+    """
+    Récupère certaines informations de tous les utilisateurs.
+
+    :return: une liste de tuples contenant les informations de chaque utilisateur.
+    """
+
+    connexion = database.connect_to_db(DB_PATH)
+    resultat = database.select_data(connexion, "SELECT id, name, public_key FROM user")
+    database.close_connection(connexion) 
+    return resultat
+
 def get_username(user_id: str) -> str:
     """
     Récupère le pseudonyme d'un utilisateur à partir de son identifiant unique.

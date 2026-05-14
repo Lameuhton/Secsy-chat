@@ -33,7 +33,7 @@ logging.basicConfig(
 )
 logger_client = logging.getLogger(__name__)
 
-def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, client_connectes: dict, channels: dict, context_data: dict):
+def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, clients: dict, channels: dict, context_data: dict, private_key: bytes):
     """
     Traite les messages sortants et les renvoie au serveur.
     """
@@ -178,11 +178,21 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                 # Chiffrement asymétrique de la clé symétrique ChaCha par la clé publique du destinataire (RSA) --> chiffrement d'une clé de chiffrement
                 encrypted_key = security.rsa_encrypt(chacha_key, recipient_public_key)
 
-                # Construction du message à envoyer au serveur
+                # Récupération des informations nécessaires
                 sender_name = msg.sender_name
-                sender_id = client_connectes[sender_name]["id"]
-                
+                sender_id = clients[sender_name]["id"]
+
+                # Construction du message à envoyer au serveur
                 message_dict = message.build_message(msg.timestamp, sender_id, sender_name, context_id, channel_name, "CHANNEL", full_ciphertext.hex(), cipher_text_size, encrypted_key.hex())
+
+                # Calcul de l'intégrité du message (checksum et signature)
+                checksum = security.generate_checksum(message_dict)
+                signature = security.sign_checksum(private_key,checksum)
+
+                # Ajout de l'intégrité au message
+                message_dict["integrity"]["checksum"] = checksum
+                message_dict["integrity"]["signature"] = signature
+
                 send_to_server(sock_client, aes_key, message_dict, exchange.ExchangeType.MESSAGE)
 
         except Empty:
@@ -194,7 +204,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
 
-def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, client_connectes: dict, channels: dict, context_data: dict):
+def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.socket.socket, aes_key: bytes, tui: SecsyChatTui, private_key: bytes, clients: dict, channels: dict, context_data: dict):
     """
     Traite les messages entrants et les renvoie vers l'interface pour affichage.
     :param q_inbound: la queue pour les messages entrants à afficher dans l'interface
@@ -221,6 +231,8 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
             # Déchiffre avec le nonce et le tag
             plaindata = security.aes_decrypt(ciphertext, aes_key, (nonce,tag))
             
+            
+
             # Vérification du type de message reçu
             if exchange_type == exchange.ExchangeType.MESSAGE:
                 # Parse du message (JSON → dictionnaire Python)
@@ -230,13 +242,22 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                 sender_id = parsed_msg["sender"]["id"]
                 recipient_type = parsed_msg["recipient"]["type"]
                 recipient_name = parsed_msg["recipient"]["name"]
+
+                # Vérification de l'intégrité du message (checksum + signature)
+                sender_public_key = clients[sender_name]["public_key"]
+
+                is_valid = security.validate_message_integrity(parsed_msg, sender_public_key)
+
+                if not is_valid:
+                    logger_client.warning("Message reçu avec une intégrité invalide. Message ignoré.")
+                    continue
                 
                 # Vérification si c'est un message channel ou privé
                 if recipient_type == "CHANNEL":
                     # Si le message reçu concerne le canal actuellement sélectionné dans le contexte, on l'affiche dans l'interface
                     if parsed_msg["recipient"]["id"] == context_data.get("context"):
-                        # On déchiffre et on construit le message
                         
+                        # On déchiffre et on construit le message
                         message_str = security.decrypt_message(parsed_msg, channels[recipient_name]["private_key"])
                         tui_msg = TuiMessage(timestamp=time_stamp, sender_name=sender_name, message=message_str, channel=recipient_name)
                         q_inbound.put(tui_msg)
@@ -264,22 +285,19 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     user_id = parsed_event["payload"]["data"]["id"]
                     user_public_key = bytes.fromhex(parsed_event["payload"]["data"]["public_key"])
                     status = parsed_event["payload"]["data"]["status"]
-                        
+                    
+                    # Remplace le statut de l'utilisateur dans le dictionnaire
+                    clients[name] = { "id": user_id, "public_key": user_public_key, "status": status}
+                    
                     # Vérification du status du tiers (actif ou inactif)
                     if status == False:
                         logger_client.info(f"Utilisateur déconnecté: {name}")
-                        # Retire l'utilisateur du dictionnaire
-                        if name in client_connectes:
-                            del client_connectes[name]
                         # Construction de l'objet TuiMessage
                         tui_msg = TuiMessage(sender_name=name, message=f"{name}", timestamp=time_stamp, type=TuiMessageType.DISCONNECTED_USER_EVENT)
                         # Ajout du message à la queue
                         q_inbound.put(tui_msg)
                     else:
                         logger_client.info(f"Utilisateur connecté: {name}")
-                        # Rajoute l'utilisateur dans le dictionnaire s'il n'y est pas déjà
-                        if name not in client_connectes:
-                            client_connectes[name] = {"id": user_id, "public_key": user_public_key}
                         # Construction de l'objet TuiMessage        
                         tui_msg = TuiMessage(sender_name=name, message=f"{name}", timestamp=time_stamp, type=TuiMessageType.CONNECTED_USER_EVENT)
                         # Ajout du message à la queue
@@ -582,8 +600,8 @@ def main():
 
     
     
-    # Contiendra les id, name et clé publiques des utilisateurs connectés
-    client_connectes = {}
+    # Contiendra les id, name et clé publiques de tous les utilisateurs
+    clients = {}
     # Contiendra les id, name, clé publiques et optionnellement la clé privée (si on est membre) des channels pour cette session
     channels = {}
     
@@ -591,7 +609,7 @@ def main():
     # INSTRUCTIONS DE BASE AU SERVEUR
     # -------------------------------------------------
     
-    # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et les afficher dans l'interface    
+    # Envoi d'une instruction GET_USERS pour récupérer la liste des utilisateurs actifs et inactifs
     get_users_statement = statement.build_get_users()
     send_to_server(sock_client, aes_key, get_users_statement, exchange.ExchangeType.STATEMENT)
     
@@ -625,7 +643,7 @@ def main():
         outbound_thread = Thread(
             target=handle_outbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages sortants et aes
-            args=(q_outbound, sock_client, aes_key, client_connectes, channels, context_data),
+            args=(q_outbound, sock_client, aes_key, clients, channels, context_data, private_key),
             daemon=True,
         )
         outbound_thread.start()
@@ -638,7 +656,7 @@ def main():
         inbound_thread = Thread(
             target=handle_inbound_messages,
             # On passe les queues et le socket client en arguments à la fonction de traitement des messages entrants
-            args=(q_inbound, sock_client, aes_key, tui, private_key, client_connectes, channels, context_data),
+            args=(q_inbound, sock_client, aes_key, tui, private_key, clients, channels, context_data),
             daemon=True,
         )
         inbound_thread.start()

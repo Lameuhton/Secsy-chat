@@ -76,6 +76,7 @@ def build_message(timestamp: float, sender_id: str, sender_name: str, recipient_
     :param ct_ek: la clé de chiffrement du texte chiffré
     :return: le message sous forme d'un dictionnaire ou d'un objet    
     """
+
     return {
         "timestamp": timestamp,
         "sender": {
@@ -92,8 +93,4 @@ def build_message(timestamp: float, sender_id: str, sender_name: str, recipient_
             "cipher_text_size": ct_size,
             "cipher_text_encrypted_key": ct_ek
             },
-        "integrity": {
-            "checksum": "",
-            "signature": ""
-        }
     }

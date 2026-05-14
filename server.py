@@ -163,6 +163,17 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 # Parse du message (JSON → dictionnaire Python)
                 parsed_msg = message.parse_message(plaindata)
                 
+                # Vérification de l'intégrité du message (checksum et signature)
+                sender_name = parsed_msg["sender"]["name"]
+                sender = data.get_user(sender_name)
+                sender_public_key = bytes.fromhex(sender[3])
+
+                is_valid = security.validate_message_integrity(parsed_msg, sender_public_key)
+
+                if not is_valid:
+                    logger_server.warning(f"Message reçu de {sender_name} avec une intégrité invalide — message ignoré")
+                    continue
+
                 # Sauvegarde en base de données du message en fonction du destinataire (CHANNEL ou USER)
                 if parsed_msg["recipient"]["type"] == "CHANNEL" :
                     # Vérifie que le channel existe avant de sauvegarder le message et si j'en suis toujours bien membre
@@ -195,15 +206,25 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                 
                 # Vérification du type précis de l'instruction
                 if parsed_statement["payload"]["name"] == "GET_USERS":
-                    # Le serveur envoie à l'émetteur un événement USER_UPDATED pour chaque client connecté dans le dictionnaire
-                    for addr_loop, client_data_loop in clients_connectes.items():
-                        
-                        pseudo_loop = client_data_loop["pseudo"]
-                        public_key_loop = client_data_loop["public_key"]
-                        id_loop = client_data_loop["id"]
+                    
+                    # Récupération de tous les users
+                    all_users = data.get_all_users()
 
-                        event_payload = event.build_user_updated(time.time(), id_loop, pseudo_loop, True, public_key_loop)
-                        
+                    for user in all_users:
+                        user_id = user[0]
+                        user_name = user[1]
+                        user_public_key = user[2]
+                        status = False
+
+                        # Vérifie si l'utilisateur est dans le dictionnaire des clients connectés pour lui attribuer un status True ou False (connecté ou déconnecté)
+                        for client_data in clients_connectes.values():
+                            if client_data["id"] == user_id:
+                                status = True
+                                break
+
+                        # Construction de l'event
+                        event_payload = event.build_user_updated(time.time(), user_id, user_name, status, user_public_key)
+
                         # Envoi au client connecté actuel (qui a fait le GET_USERS)
                         single_client = { addr: { "sock": sock_client, "aes_key": aes_key }}
                         send_msg_to_clients(event_payload, exchange.ExchangeType.EVENT, single_client)
@@ -343,6 +364,10 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                             recipient_name = data.get_username(msg_data[3])
                         sender_name = data.get_username(msg_data[2])
                         msg_payload = message.build_message(msg_data[1], msg_data[2], sender_name, msg_data[3], recipient_name, recipient_type, msg_data[4], msg_data[5], msg_data[6])
+                        msg_payload["integrity"] = {
+                            "checksum": msg_data[7],
+                            "signature": msg_data[8]
+                        }
                         # Envoi du message au client
                         single_client = { addr: clients_connectes[addr]}
                         send_msg_to_clients(msg_payload, exchange.ExchangeType.MESSAGE, single_client)
