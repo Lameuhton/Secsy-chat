@@ -10,6 +10,10 @@ from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 import logging
+import hashlib
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+import base64
 
 # Initialisation du passwordhasher
 ph = PasswordHasher()
@@ -287,8 +291,13 @@ def generate_checksum(data: dict) -> str:
     :return: la somme de contrôle SHA-256 du message sous forme hexadécimale
     """
     # Ne pas oublier de retirer la partie "integrity" du message avant de calculer le checksum
+    #Compréhension de dictionnaire —-> c'est une façon compacte de construire un nouveau dictionnaire en Python
+    data_sans_integrity = {k: v for k, v in data.items() if k != "integrity"}
     # Ensuite sérialiser le dictionnaire en JSON
     # (ne pas oublier sort_keys=True pour garantir un ordre stable des clés, sinon le même message pourrait générer des checksums différents)
+    json_bytes = json.dumps(data_sans_integrity, sort_keys=True).encode('utf-8')
+    hash_data = hashlib.sha256(json_bytes)
+    return hash_data.hexdigest()
 
 def verify_checksum(message: dict, expected_checksum: str) -> bool:
     """
@@ -299,6 +308,8 @@ def verify_checksum(message: dict, expected_checksum: str) -> bool:
     :param expected_checksum: la somme de contrôle attendue
     :return: True si les sommes correspondent, sinon False
     """
+    return generate_checksum (message) == expected_checksum 
+    #Python renvoit True ou False suivant le résultat de la comparaison.
 
 def sign_checksum(private_key: bytes, checksum: str) -> str:
     """
@@ -313,6 +324,13 @@ def sign_checksum(private_key: bytes, checksum: str) -> str:
     :param checksum: la somme de contrôle à signer
     :return: la signature encodée en Base64
     """
+    #La signature a un schéma différent que encrypt ou decrypt : PKCS1_v1_5 (ou pss).
+    rsa_key = RSA.import_key(private_key)
+    signataire = pkcs1_15.new(rsa_key) 
+    hash_chksm = SHA256.new(checksum.encode('utf-8')) 
+    signature = signataire.sign(hash_chksm)
+    #verify() est une méthode fournie par la librairie pycryptodome pour signer.
+    return base64.b64encode(signature).decode('utf-8')   #Encodé en base64 pour pouvoir la mettre en JSON
 
 def verify_signature(public_key: bytes, checksum: str, signature: str) -> bool:
     """
@@ -329,6 +347,16 @@ def verify_signature(public_key: bytes, checksum: str, signature: str) -> bool:
     :param signature: la signature encodée en Base64
     :return: True si la signature est valide, sinon False
     """
+    rsa_key = RSA.import_key(public_key)
+    verificateur = pkcs1_15.new(rsa_key)
+    hash_chksm = SHA256.new(checksum.encode('utf-8'))
+    signature_bytes= base64.b64decode(signature)   
+    try :
+        verificateur.verify(hash_chksm, signature_bytes) 
+        #verify() est une méthode fournie par la librairie pycryptodome pour vérifier.
+        return True
+    except :
+        return False
 
 def validate_message_integrity(message: dict, public_key: bytes) -> bool:
     """
@@ -347,3 +375,7 @@ def validate_message_integrity(message: dict, public_key: bytes) -> bool:
     :param public_key: la clé publique RSA de l'expéditeur
     :return: True si l'intégrité du message est valide, sinon False
     """
+    if not verify_signature(public_key, message["integrity"]["checksum"], message["integrity"]["signature"]) :
+        return False
+    else :
+        return verify_checksum(message, message["integrity"]["checksum"])
