@@ -135,10 +135,66 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                     # Construction DELETE_CHANNEL et envoi au serveur
                     delete_statement = statement.build_delete_channel(channel_name)
                     send_to_server(sock_client, aes_key, delete_statement, exchange.ExchangeType.STATEMENT)
+                
+                # ---------------- MSG ----------------
+                elif command == "/pm":
+
+                    # Vérification des arguments
+                    if len(parts) < 3:
+                        logger_client.warning("Commande /msg invalide. Usage: /msg <user> <message>")
+                        continue
+
+                    recipient_name = parts[1]
+                    private_message = " ".join(parts[2:])
+
+                    # Empêche l'envoi à soi-même
+                    if recipient_name == msg.sender_name:
+                        logger_client.warning("Impossible de vous envoyer un message à vous-même.")
+                        continue
+                    # Vérifie que l'utilisateur existe
+                    if recipient_name not in clients:
+                        logger_client.warning(f"Utilisateur introuvable : {recipient_name}")
+                        continue
+                    # Vérifie que l'utilisateur est connecté
+                    if not clients[recipient_name]["status"]:
+                        logger_client.warning(f"L'utilisateur {recipient_name} est déconnecté.")
+                        continue
+
+                    # Chiffrement du message
+                    plaintext = private_message.encode("utf-8")
+                    cipher_text_size = len(plaintext)
+                    # Génération clé ChaCha
+                    chacha_key = security.chacha_generate_key()
+                    # Chiffrement du message
+                    nonce, ciphertext_with_tag = security.chacha_encrypt(plaintext,chacha_key)
+                    full_ciphertext = nonce + ciphertext_with_tag
+
+                     # Récupération clé publique du destinataire
+                    recipient_public_key = clients[recipient_name]["public_key"]
+                    # Chiffrement RSA de la clé ChaCha
+                    encrypted_key = security.rsa_encrypt(chacha_key,recipient_public_key)
+
+                    sender_name = msg.sender_name
+                    sender_id = clients[sender_name]["id"]
+                    recipient_id = clients[recipient_name]["id"]
+                    # Construction du message
+                    message_dict = message.build_message(msg.timestamp,sender_id,sender_name,recipient_id,recipient_name,"USER",full_ciphertext.hex(),cipher_text_size,encrypted_key.hex())
+
+                    # Calcul de l'intégrité
+                    checksum = security.generate_checksum(message_dict)
+                    signature = security.sign_checksum(private_key, checksum)
+                    # Ajout de l'intégrité au message
+                    message_dict["integrity"] = {
+                        "checksum": checksum,
+                        "signature": signature
+                    }
+                    # Envoi du message au serveur
+                    send_to_server(sock_client, aes_key, message_dict, exchange.ExchangeType.MESSAGE)
 
                 else:
                     logger_client.warning(f"Commande inconnue: {command}")
                     continue
+
 
             # -------------------------------------------------
             # MESSAGES CHANNEL

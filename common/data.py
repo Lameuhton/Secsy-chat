@@ -501,11 +501,12 @@ def is_channel_owner(channel_id: str, user_id: str) -> bool:
 
 # ---------- Messages privés (plus tard) ------------
 
-def get_last_private_message(user_id: str) -> List[Tuple]:
+def get_last_private_message(user_id: str, limit: int = 20) -> List[Tuple]:
     """
     Récupère les derniers messages privés d'un utilisateur à partir de son identifiant unique.
     
     :param user_id: l'identifiant unique de l'utilisateur
+    :param limit: le nombre maximum de messages à récupérer
     :return: une liste de tuples contenant les informations des messages privés de l'utilisateur.
                 
         Structure des tuples retournés :
@@ -527,7 +528,7 @@ def get_last_private_message(user_id: str) -> List[Tuple]:
     cursor = connexion.cursor() # Crée un curseur (analogie du bibliothécaire)
     # Message "safe" des injections car ? sera remplacé par du txt considéré comme python
     # Il y a "OR" car on prend autant les messages envoyés par Michel que ceux qu'il a reçus
-    cursor.execute("SELECT * FROM private_message WHERE  sender_id = ? OR recipient_id = ? ORDER BY timestamp DESC  LIMIT 20", (user_id, user_id))
+    cursor.execute("SELECT * FROM private_message WHERE  sender_id = ? OR recipient_id = ? ORDER BY timestamp DESC  LIMIT ?", (user_id, user_id, limit))
     resultat = cursor.fetchall() # Prend les derniers résultats de la dernière requête exécutée
     # Rajoute à chaque tuple un champ supplémentaire qui indique que c'est un message privé (USER)
     resultat = [tuple(list(row) + ["USER"]) for row in resultat]
