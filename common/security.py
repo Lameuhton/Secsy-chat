@@ -1,3 +1,4 @@
+import json
 from typing import Tuple
 import secrets
 import os
@@ -278,7 +279,7 @@ def decrypt_message(parsed_msg: dict, private_key: bytes) -> str:
     return message_str
     
 def generate_checksum(data: dict) -> str:
-     """
+    """
     Génère la somme de contrôle SHA-256 d'un message.
 
     La propriété "integrity" ne doit pas être prise en compte
