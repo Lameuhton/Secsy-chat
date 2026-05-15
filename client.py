@@ -318,10 +318,7 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     if parsed_msg["recipient"]["id"] == context_data.get("context"):
                         
                         # On déchiffre et on construit le message
-                        try:
-                            message_str = security.decrypt_message(parsed_msg, private_key)
-                        except Exception:
-                            continue
+                        message_str = security.decrypt_message(parsed_msg, channels[recipient_name]["private_key"])
                         tui_msg = TuiMessage(timestamp=time_stamp, sender_name=sender_name, message=message_str, channel=recipient_name)
                         q_inbound.put(tui_msg)
                     else:
@@ -329,7 +326,10 @@ def handle_inbound_messages(q_inbound: Queue[TuiMessage], sock_client: network.s
                     
                 elif recipient_type == "USER":
                     # On déchiffre et on construit le message
-                    message_str = security.decrypt_message(parsed_msg, private_key)
+                    try:
+                        message_str = security.decrypt_message(parsed_msg, private_key)
+                    except Exception:
+                        continue
                     # Construction objet TuiMessage pour affichage dans l'interface
                     tui_msg = TuiMessage(timestamp=time_stamp, sender_name=sender_name, message=message_str)
                     q_inbound.put(tui_msg)
