@@ -193,8 +193,22 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                             send_msg_to_clients(parsed_msg, exchange_type, {addr_loop: client_data_loop})
                             
                 elif parsed_msg["recipient"]["type"] == "USER" :
+
+                    recipient_id = parsed_msg["recipient"]["id"]
+                    sender_id = parsed_msg["sender"]["id"]
+
+                    # Vérifie que le destinataire ne s'envoie pas un mp à lui-même
+                    if recipient_id == sender_id:
+                        logger_server.warning(f"Tentative d'envoi d'un message privé à soi-même par {pseudo}, message ignoré")
+                        continue
+
+                    # Ajout du message privé en base de données
                     data.add_private_message(parsed_msg)
-                    # A voir plus tard (itération messages privés)
+                    
+                    for addr_loop, client_data_loop in clients_connectes.items():
+                        if client_data_loop["id"] == recipient_id:
+                            send_msg_to_clients(parsed_msg, exchange_type, {addr_loop: client_data_loop})
+                    send_msg_to_clients(parsed_msg, exchange_type, {addr: clients_connectes[addr]})
                 
                 # Update la dernière activité de l'utilisateur
                 data.update_user_last_activity(clients_connectes[addr]["id"])
@@ -350,7 +364,7 @@ def gerer_client(sock_client, addr): # Arguments générés dans le try
                                 logger_server.warning(f"Tentative de récupération des messages échouée : le channel {channel_name} n'existe pas/plus")
                     
                     # Récupère les {number} derniers messages privés concernant l'utilisateur
-                    # last_messages += data.get_last_private_messages(clients_connectes[addr]["id"], number) # FONCTION A FAIRE PLUS TARD
+                    last_messages += data.get_last_private_message(clients_connectes[addr]["id"], number)
                     # Trie les messages par timestamp pour afficher les plus récents en dernier
                     last_messages.sort(key=lambda x: x[1]) # Car x[1] = timestamp dans la structure des tuples retournés par get_last_channel_message
                     

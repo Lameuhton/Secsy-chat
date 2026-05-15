@@ -156,24 +156,21 @@ def execute_seed(connection):
             FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
         )
     """)
-
-
-    # Plus tard (messages privés)
-    # cursor.execute("""
-    #     CREATE TABLE IF NOT EXISTS private_message (
-    #         id VARCHAR(21) PRIMARY KEY,
-    #         timestamp TIMESTAMP NOT NULL,
-    #         sender_id VARCHAR(21) NOT NULL,
-    #         recipient_id VARCHAR(21) NOT NULL,
-    #         payload_cipher_text TEXT(65535) NOT NULL,
-    #         payload_cipher_text_size INTEGER NOT NULL,
-    #         payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
-    #         integrity_checksum VARCHAR(255) NOT NULL,
-    #         integrity_signature TEXT(65535) NOT NULL,
-    #         FOREIGN KEY (recipient_id) REFERENCES user(id),
-    #         FOREIGN KEY (sender_id) REFERENCES user(id)
-    #     )
-    # """)  
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS private_message (
+            id VARCHAR(21) PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            sender_id VARCHAR(21) NOT NULL,
+            recipient_id VARCHAR(21) NOT NULL,
+            payload_cipher_text TEXT(65535) NOT NULL,
+            payload_cipher_text_size INTEGER NOT NULL,
+            payload_cipher_text_encrypted_key VARCHAR(255) NOT NULL,
+            integrity_checksum VARCHAR(255) NOT NULL,
+            integrity_signature TEXT(65535) NOT NULL,
+            FOREIGN KEY (recipient_id) REFERENCES user(id),
+            FOREIGN KEY (sender_id) REFERENCES user(id)
+        )
+    """)  
     connection.commit()
 
 
