@@ -190,6 +190,10 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                 signature = security.sign_checksum(private_key,checksum)
 
                 # Ajout de l'intégrité au message
+                message_dict["integrity"] = {
+                    "checksum": checksum,
+                    "signature": signature
+                }
                 message_dict["integrity"]["checksum"] = checksum
                 message_dict["integrity"]["signature"] = signature
 
@@ -199,7 +203,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
             # Timeout atteint, on reboucle pour vérifier is_shutdown
             continue
         except Exception as e:
-            logger_client.error(f"Erreur lors du traitement d'un message sortant: {e}")
+            logger_client.error(f"Erreur lors du traitement d'un message sortant: {e}", exc_info=True)
         
     logger_client.info("Thread de traitement des messages sortants s'arrete")
 
