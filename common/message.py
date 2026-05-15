@@ -32,12 +32,9 @@ def parse_message(payload: bytes):
     recipient_name = recipient.get("name")
     payload_cipher_text_size = payload_data.get("cipher_text_size")
     payload_cipher_text_encrypted_key = payload_data.get("cipher_text_encrypted_key")
-
-    # Décommenter plus tard pour itération suivante
-
-    # integrity = data.get("integrity", {})
-    # integrity_checksum = integrity.get("checksum")
-    # integrity_signature = integrity.get("signature")
+    integrity = data.get("integrity", {})
+    integrity_checksum = integrity.get("checksum")
+    integrity_signature = integrity.get("signature")
 
     return {
         "timestamp": timestamp,
@@ -56,8 +53,8 @@ def parse_message(payload: bytes):
             "cipher_text_encrypted_key": payload_cipher_text_encrypted_key
             },
         "integrity": {
-            "checksum": "",
-            "signature": ""
+            "checksum": integrity_checksum,
+            "signature": integrity_signature
         }
     }
     
