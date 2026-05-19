@@ -140,7 +140,7 @@ def handle_outbound_messages(q_outbound: Queue[TuiMessage], sock_client: network
                 elif command == "/pm":
 
                     # Vérification des arguments
-                    if len(parts) < 3:
+                    if len(parts) < 3: # Parce que minimum "\pm", "destinataire", "msg" 
                         logger_client.warning("Commande /msg invalide. Usage: /msg <user> <message>")
                         continue
 

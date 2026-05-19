@@ -296,8 +296,8 @@ def generate_checksum(data: dict) -> str:
     data_sans_integrity = {k: v for k, v in data.items() if k != "integrity"}
     # Ensuite sérialiser le dictionnaire en JSON
     # (ne pas oublier sort_keys=True pour garantir un ordre stable des clés, sinon le même message pourrait générer des checksums différents)
-    json_bytes = json.dumps(data_sans_integrity, sort_keys=True).encode('utf-8')
-    hash_data = hashlib.sha256(json_bytes)
+    json_bytes = json.dumps(data_sans_integrity, sort_keys=True).encode('utf-8') #Convertit l'objet Python data_sans_integrity en chaîne JSON
+    hash_data = hashlib.sha256(json_bytes) # Retourne le hash sous forme de chaîne hexadécimale de 64 caractères
     return hash_data.hexdigest()
 
 def verify_checksum(message: dict, expected_checksum: str) -> bool:
